@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Vocab Trainer</title>
+	<style>
+		body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;max-width:980px;margin:24px auto;padding:16px}
+		header{display:flex;align-items:center;justify-content:space-between}
+		h1{margin:0;font-size:1.4rem}
+		.stats{display:flex;gap:12px;align-items:center}
+		.card{border:1px solid #e3e3e3;padding:12px;border-radius:8px;background:#fafafa}
+		#quiz .item{display:flex;gap:12px;align-items:center;margin-bottom:8px}
+		#quiz .left{flex:1}
+		#quiz .right{flex:1;border-left:1px solid #eee;padding-left:12px;color:#111}
+		input[type=text], textarea{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px}
+		button{padding:8px 12px;border-radius:6px;border:1px solid #bbb;background:#fff;cursor:pointer}
+		button.primary{background:#1e90ff;color:#fff;border-color:#1e90ff}
+		table {width:100%;border-collapse:collapse;margin-top:12px}
+		td,th{padding:8px;border-bottom:1px solid #eee}
+		.muted{color:#666;font-size:0.9rem}
+		.ok{color:green}
+		.bad{color:red}
+	</style>
+</head>
+<body>
+	<header>
+		<h1>Vocab Trainer</h1>
+		<div class="stats">
+			<div class="card">Counter: <strong id="counter">0</strong></div>
+			<div class="card">Debt: <strong id="debt">0</strong></div>
+			<div class="card muted" id="lastDecay">Last checked: -</div>
+		</div>
+	</header>
+
+	<section id="quizSection">
+		<h2>Review quizzes (shown before adding new vocab)</h2>
+		<div id="quiz" class="card">
+			<!-- quiz items inserted here -->
+			<div id="noQuiz" class="muted">No quizzes due right now. You can add new vocab below.</div>
+		</div>
+	</section>
+
+	<section id="addSection" style="margin-top:18px">
+		<h2>Add new vocab</h2>
+		<div class="card">
+			<label class="muted">Vocab (word)</label>
+			<input id="inputWord" type="text" placeholder="e.g. abate" />
+			<label class="muted" style="margin-top:8px;display:block">Definition</label>
+			<textarea id="inputDef" rows="3" placeholder="definition..."></textarea>
+			<div style="display:flex;gap:8px;margin-top:8px">
+				<button id="addBtn" class="primary">Add vocab</button>
+				<button id="clearBtn">Clear inputs</button>
+			</div>
+
+			<h3 style="margin-top:12px">Today's added vocab</h3>
+			<table id="todayList"><thead><tr><th>Word</th><th>Definition</th><th>Date</th><th></th></tr></thead><tbody></tbody></table>
+		</div>
+	</section>
+
+	<section style="margin-top:18px">
+		<h2>All vocab</h2>
+		<div class="card">
+			<table id="allList"><thead><tr><th>Word</th><th>Definition</th><th>Date Added</th><th>Reviews</th><th></th></tr></thead><tbody></tbody></table>
+		</div>
+	</section>
+
+	<script>
+		// Simple client-side vocab trainer stored in localStorage.
+		// Assumptions made:
+		// 1) This app is purely client-side (localStorage persistence).
+		// 2) "Days counted" are calendar days based on local date strings (YYYY-MM-DD).
+		// 3) Daily decay: on each new day the app is opened, we deduct 5 * daysElapsed from the counter.
+		//    If the deduction exceeds the counter, counter becomes 0 and the remainder becomes "debt".
+		// 4) Quiz triggers on items whose days since added equals 1,2,5,8 (and not yet reviewed for that date).
+
+		const STORAGE_KEY = 'vocabAppState_v1';
+
+		function todayStr(d = new Date()){ return d.toISOString().slice(0,10); }
+
+		function daysBetween(aStr, bStr){
+			const a = new Date(aStr+'T00:00:00');
+			const b = new Date(bStr+'T00:00:00');
+			const ms = b - a;
+			return Math.floor(ms / (1000*60*60*24));
+		}
+
+		function loadState(){
+			const raw = localStorage.getItem(STORAGE_KEY);
+			if(!raw) return { items:[], counter:0, debt:0, lastDecay: todayStr(), createdAt: todayStr() };
+			try{ return JSON.parse(raw); }catch(e){ console.error('state parse', e); return { items:[], counter:0, debt:0, lastDecay: todayStr(), createdAt: todayStr() } }
+		}
+
+		function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+		let state = loadState();
+
+		// Apply daily decay when we open the app
+		function applyDecay(){
+			const now = todayStr();
+			const last = state.lastDecay || now;
+			const days = daysBetween(last, now);
+			if(days <= 0) return;
+			const totalToDeduct = days * 5;
+			if(state.counter >= totalToDeduct){
+				state.counter -= totalToDeduct;
+				state.debt = Math.max(0, state.debt - 0); // debt unchanged when counter covers deduction
+			}else{
+				const remain = totalToDeduct - state.counter;
+				state.counter = 0;
+				state.debt = (state.debt || 0) + remain; // accumulate debt
+			}
+			state.lastDecay = now;
+			saveState();
+		}
+
+		function addVocab(word, def){
+			const item = { id: Date.now(), word: word.trim(), def: def.trim(), dateAdded: todayStr(), reviews: [] };
+			state.items.push(item);
+			state.counter = (state.counter || 0) + 1;
+			saveState();
+			renderAll();
+			renderQuiz();
+		}
+
+		function markReviewed(item, dateStr){
+			if(!item.reviews.includes(dateStr)) item.reviews.push(dateStr);
+			saveState();
+			renderAll();
+			renderQuiz();
+		}
+
+		function getDueItems(){
+			const dueDays = [1,2,5,8];
+			const now = todayStr();
+			return state.items.filter(it => {
+				const days = daysBetween(it.dateAdded, now);
+				if(!dueDays.includes(days)) return false;
+				// if already reviewed for this date, skip
+				return !it.reviews.includes(now);
+			});
+		}
+
+		// UI wiring
+		const counterEl = document.getElementById('counter');
+		const debtEl = document.getElementById('debt');
+		const lastDecayEl = document.getElementById('lastDecay');
+		const quizEl = document.getElementById('quiz');
+		const noQuizEl = document.getElementById('noQuiz');
+
+		function renderQuiz(){
+			const due = getDueItems();
+			quizEl.innerHTML = '';
+			if(due.length === 0){ quizEl.appendChild(noQuizEl); noQuizEl.style.display='block'; return; }
+			noQuizEl.style.display='none';
+			due.forEach(item => {
+				const row = document.createElement('div'); row.className='item';
+				const left = document.createElement('div'); left.className='left';
+				const right = document.createElement('div'); right.className='right';
+				const input = document.createElement('input'); input.type='text'; input.placeholder='Type the vocab (word) here';
+				const checkBtn = document.createElement('button'); checkBtn.textContent='Check';
+				const markBtn = document.createElement('button'); markBtn.textContent='Mark correct'; markBtn.style.marginLeft='6px';
+
+				checkBtn.onclick = ()=>{
+					const guess = input.value.trim().toLowerCase();
+					const correct = item.word.trim().toLowerCase();
+					if(guess === correct){
+						input.style.borderColor='green';
+						input.title='Correct';
+					}else{
+						input.style.borderColor='red';
+						input.title='Wrong — correct: ' + item.word;
+					}
+				};
+
+				markBtn.onclick = ()=>{ markReviewed(item, todayStr()); }
+
+				left.appendChild(input);
+				left.appendChild(document.createElement('div')).appendChild(checkBtn);
+				left.appendChild(document.createElement('div')).appendChild(markBtn);
+
+				right.innerHTML = `<div class="muted">Definition</div><div style="margin-top:6px">${escapeHtml(item.def)}</div>`;
+
+				row.appendChild(left); row.appendChild(right);
+				quizEl.appendChild(row);
+			});
+		}
+
+		function escapeHtml(s){ return (s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+		function renderAll(){
+			counterEl.textContent = state.counter || 0;
+			debtEl.textContent = state.debt || 0;
+			lastDecayEl.textContent = 'Last checked: ' + (state.lastDecay || todayStr());
+
+			const tbody = document.querySelector('#allList tbody'); tbody.innerHTML='';
+			state.items.slice().reverse().forEach(it => {
+				const tr = document.createElement('tr');
+				const tdWord = document.createElement('td'); tdWord.textContent = it.word;
+				const tdDef = document.createElement('td'); tdDef.textContent = it.def;
+				const tdDate = document.createElement('td'); tdDate.textContent = it.dateAdded;
+				const tdReviews = document.createElement('td'); tdReviews.textContent = (it.reviews||[]).join(', ') || '-';
+				const tdAct = document.createElement('td');
+				const del = document.createElement('button'); del.textContent='Delete';
+				del.onclick = ()=>{ state.items = state.items.filter(x=>x.id !== it.id); saveState(); renderAll(); renderQuiz(); };
+				tdAct.appendChild(del);
+				tr.appendChild(tdWord); tr.appendChild(tdDef); tr.appendChild(tdDate); tr.appendChild(tdReviews); tr.appendChild(tdAct);
+				tbody.appendChild(tr);
+			});
+
+			// today's list
+			const tbToday = document.querySelector('#todayList tbody'); tbToday.innerHTML='';
+			const today = todayStr();
+			state.items.filter(it=>it.dateAdded===today).forEach(it=>{
+				const tr = document.createElement('tr');
+				tr.innerHTML = `<td>${escapeHtml(it.word)}</td><td>${escapeHtml(it.def)}</td><td>${it.dateAdded}</td><td><button class="" data-id="${it.id}">Delete</button></td>`;
+				const btn = tr.querySelector('button'); btn.onclick = ()=>{ state.items = state.items.filter(x=>x.id !== it.id); saveState(); renderAll(); renderQuiz(); };
+				tbToday.appendChild(tr);
+			});
+		}
+
+		// wire add form
+		document.getElementById('addBtn').addEventListener('click', ()=>{
+			const w = document.getElementById('inputWord').value;
+			const d = document.getElementById('inputDef').value;
+			if(!w.trim() || !d.trim()){ alert('Please provide both word and definition'); return; }
+			addVocab(w,d);
+			document.getElementById('inputWord').value=''; document.getElementById('inputDef').value='';
+		});
+		document.getElementById('clearBtn').addEventListener('click', ()=>{ document.getElementById('inputWord').value=''; document.getElementById('inputDef').value=''; });
+
+		// Initialization
+		applyDecay();
+		renderAll();
+		renderQuiz();
+
+		// Expose for debugging
+		window.vocabState = state;
+	</script>
+</body>
+</html>
