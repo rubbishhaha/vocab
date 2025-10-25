@@ -66,15 +66,8 @@
 	</section>
 
 	<script>
-		// Simple client-side vocab trainer stored in localStorage.
-		// Assumptions made:
-		// 1) This app is purely client-side (localStorage persistence).
-		// 2) "Days counted" are calendar days based on local date strings (YYYY-MM-DD).
-		// 3) Daily decay: on each new day the app is opened, we deduct 5 * daysElapsed from the counter.
-		//    If the deduction exceeds the counter, counter becomes 0 and the remainder becomes "debt".
-		// 4) Quiz triggers on items whose days since added equals 1,2,5,8 (and not yet reviewed for that date).
-
-		const STORAGE_KEY = 'vocabAppState_v1';
+		// Client-side vocab trainer backed by Cloudflare KV via /api/state.
+		// Days counted use YYYY-MM-DD strings; same review cadence as before.
 
 		function todayStr(d = new Date()){ return d.toISOString().slice(0,10); }
 
@@ -85,18 +78,20 @@
 			return Math.floor(ms / (1000*60*60*24));
 		}
 
-		function loadState(){
-			const raw = localStorage.getItem(STORAGE_KEY);
-			if(!raw) return { items:[], counter:0, debt:0, lastDecay: todayStr(), createdAt: todayStr() };
-			try{ return JSON.parse(raw); }catch(e){ console.error('state parse', e); return { items:[], counter:0, debt:0, lastDecay: todayStr(), createdAt: todayStr() } }
+		async function apiGetState(){
+			const res = await fetch('/api/state');
+			if(!res.ok) throw new Error('Failed to load state');
+			return res.json();
 		}
+		async function apiPutState(st){
+			await fetch('/api/state', { method:'PUT', headers:{'content-type':'application/json'}, body: JSON.stringify(st) });
+		}
+		async function apiDeleteState(){ await fetch('/api/state', { method:'DELETE' }); }
 
-		function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-
-		let state = loadState();
+		let state = { items:[], counter:0, debt:0, lastDecay: todayStr(), createdAt: todayStr() };
 
 		// Apply daily decay when we open the app
-		function applyDecay(){
+		async function applyDecay(){
 			const now = todayStr();
 			const last = state.lastDecay || now;
 			const days = daysBetween(last, now);
@@ -104,28 +99,28 @@
 			const totalToDeduct = days * 5;
 			if(state.counter >= totalToDeduct){
 				state.counter -= totalToDeduct;
-				state.debt = Math.max(0, state.debt - 0); // debt unchanged when counter covers deduction
+				state.debt = Math.max(0, state.debt - 0);
 			}else{
 				const remain = totalToDeduct - state.counter;
 				state.counter = 0;
-				state.debt = (state.debt || 0) + remain; // accumulate debt
+				state.debt = (state.debt || 0) + remain;
 			}
 			state.lastDecay = now;
-			saveState();
+			await apiPutState(state);
 		}
 
-		function addVocab(word, def){
+		async function addVocab(word, def){
 			const item = { id: Date.now(), word: word.trim(), def: def.trim(), dateAdded: todayStr(), reviews: [] };
 			state.items.push(item);
 			state.counter = (state.counter || 0) + 1;
-			saveState();
+			await apiPutState(state);
 			renderAll();
 			renderQuiz();
 		}
 
-		function markReviewed(item, dateStr){
+		async function markReviewed(item, dateStr){
 			if(!item.reviews.includes(dateStr)) item.reviews.push(dateStr);
-			saveState();
+			await apiPutState(state);
 			renderAll();
 			renderQuiz();
 		}
@@ -136,7 +131,6 @@
 			return state.items.filter(it => {
 				const days = daysBetween(it.dateAdded, now);
 				if(!dueDays.includes(days)) return false;
-				// if already reviewed for this date, skip
 				return !it.reviews.includes(now);
 			});
 		}
@@ -173,7 +167,7 @@
 					}
 				};
 
-				markBtn.onclick = ()=>{ markReviewed(item, todayStr()); }
+				markBtn.onclick = async ()=>{ await markReviewed(item, todayStr()); };
 
 				left.appendChild(input);
 				left.appendChild(document.createElement('div')).appendChild(checkBtn);
@@ -202,7 +196,7 @@
 				const tdReviews = document.createElement('td'); tdReviews.textContent = (it.reviews||[]).join(', ') || '-';
 				const tdAct = document.createElement('td');
 				const del = document.createElement('button'); del.textContent='Delete';
-				del.onclick = ()=>{ state.items = state.items.filter(x=>x.id !== it.id); saveState(); renderAll(); renderQuiz(); };
+				del.onclick = async ()=>{ state.items = state.items.filter(x=>x.id !== it.id); await apiPutState(state); renderAll(); renderQuiz(); };
 				tdAct.appendChild(del);
 				tr.appendChild(tdWord); tr.appendChild(tdDef); tr.appendChild(tdDate); tr.appendChild(tdReviews); tr.appendChild(tdAct);
 				tbody.appendChild(tr);
@@ -214,28 +208,33 @@
 			state.items.filter(it=>it.dateAdded===today).forEach(it=>{
 				const tr = document.createElement('tr');
 				tr.innerHTML = `<td>${escapeHtml(it.word)}</td><td>${escapeHtml(it.def)}</td><td>${it.dateAdded}</td><td><button class="" data-id="${it.id}">Delete</button></td>`;
-				const btn = tr.querySelector('button'); btn.onclick = ()=>{ state.items = state.items.filter(x=>x.id !== it.id); saveState(); renderAll(); renderQuiz(); };
+				const btn = tr.querySelector('button'); btn.onclick = async ()=>{ state.items = state.items.filter(x=>x.id !== it.id); await apiPutState(state); renderAll(); renderQuiz(); };
 				tbToday.appendChild(tr);
 			});
 		}
 
 		// wire add form
-		document.getElementById('addBtn').addEventListener('click', ()=>{
+		document.getElementById('addBtn').addEventListener('click', async ()=>{
 			const w = document.getElementById('inputWord').value;
 			const d = document.getElementById('inputDef').value;
 			if(!w.trim() || !d.trim()){ alert('Please provide both word and definition'); return; }
-			addVocab(w,d);
+			await addVocab(w,d);
 			document.getElementById('inputWord').value=''; document.getElementById('inputDef').value='';
 		});
 		document.getElementById('clearBtn').addEventListener('click', ()=>{ document.getElementById('inputWord').value=''; document.getElementById('inputDef').value=''; });
 
 		// Initialization
-		applyDecay();
-		renderAll();
-		renderQuiz();
-
-		// Expose for debugging
-		window.vocabState = state;
+		(async function init(){
+			try {
+				state = await apiGetState();
+				await applyDecay();
+			} catch (e) {
+				console.error(e);
+			}
+			renderAll();
+			renderQuiz();
+			window.vocabState = state; // expose for debugging
+		})();
 	</script>
 </body>
 </html>
