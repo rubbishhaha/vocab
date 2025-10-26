@@ -47,14 +47,20 @@ export default {
 			}
 		}
 
-		// Redirect root to the vocab page for convenience
+		// Redirect root to the main page
 		if (url.pathname === '/' || url.pathname === '') {
-			return Response.redirect(new URL('/vocab.html', url).toString(), 301);
+			return Response.redirect(new URL('/index.html', url).toString(), 301);
 		}
 
-		// Convenience route: /vocab -> /vocab.html
+		// Handle quiz page
+		if (url.pathname === '/quiz' || url.pathname === '/quiz/') {
+			url.pathname = '/quiz.html';
+			return env.ASSETS.fetch(new Request(url, request));
+		}
+
+		// Convenience route: /vocab -> /index.html (changed from vocab.html)
 		if (url.pathname === '/vocab' || url.pathname === '/vocab/') {
-			url.pathname = '/vocab.html';
+			url.pathname = '/index.html';
 			return env.ASSETS.fetch(new Request(url, request));
 		}
 
@@ -62,10 +68,10 @@ export default {
 		const res = await env.ASSETS.fetch(request);
 		if (res.status !== 404) return res;
 
-		// SPA-style fallback: if no extension, serve vocab.html
+		// SPA-style fallback: if no extension, serve index.html
 		const hasExtension = /\.[a-zA-Z0-9]+$/.test(url.pathname);
 		if (!hasExtension) {
-			url.pathname = '/vocab.html';
+			url.pathname = '/index.html';
 			return env.ASSETS.fetch(new Request(url, request));
 		}
 
