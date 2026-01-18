@@ -441,6 +441,17 @@
         // localStorage 存取函數
         const STORAGE_KEY = 'mindmap_data';
         
+        // Listen for online/offline events
+        window.addEventListener('online', () => {
+            console.log('📡 Online - syncing...');
+            const localData = loadFromLocalStorage();
+            if (localData) syncToCloud(localData);
+        });
+        
+        window.addEventListener('offline', () => {
+            console.log('📴 Offline - will use local storage only');
+        });
+        
         function saveToLocalStorage() {
             try {
                 const data = {
@@ -450,9 +461,67 @@
                     timestamp: new Date().toISOString()
                 };
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+                
+                // Sync to cloud if online
+                syncToCloud(data);
             } catch (e) {
                 console.error('Failed to save to localStorage:', e);
             }
+        }
+        
+        async function syncToCloud(localData) {
+            // Only sync if online
+            if (!navigator.onLine) {
+                console.log('Offline, skipping cloud sync');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/sync', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ localData })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        // Update local storage with merged data
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data));
+                        console.log('✅ Synced to cloud');
+                    }
+                } else {
+                    console.error('Cloud sync failed:', response.statusText);
+                }
+            } catch (e) {
+                console.error('Failed to sync to cloud:', e);
+            }
+        }
+        
+        async function loadFromCloud() {
+            if (!navigator.onLine) {
+                console.log('Offline, using local storage only');
+                return null;
+            }
+            
+            try {
+                const response = await fetch('/api/sync', {
+                    method: 'GET'
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        console.log('✅ Loaded from cloud');
+                        return result.data;
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load from cloud:', e);
+            }
+            return null;
         }
         
         function loadFromLocalStorage() {
@@ -497,24 +566,60 @@
         }
         // 初始化根節點
         let rootNode;
-        let loadedData = loadFromLocalStorage();
         
-        if (loadedData && loadedData.tree) {
-            // 從 localStorage 載入
-            rootNode = deserializeNode(loadedData.tree);
-        } else {
-            // 第一次使用，創建預設的 main 節點
-            rootNode = new MindMapNode('main', '#ff6b6b', null);
-            // 保存初始狀態
-            setTimeout(() => saveToLocalStorage(), 100);
+        // Load from cloud and local, then merge
+        async function initializeData() {
+            const localData = loadFromLocalStorage();
+            const cloudData = await loadFromCloud();
+            
+            let finalData = null;
+            
+            if (cloudData && localData) {
+                // Both exist, merge them
+                const cloudTime = new Date(cloudData.timestamp).getTime();
+                const localTime = new Date(localData.timestamp).getTime();
+                
+                if (localTime > cloudTime) {
+                    console.log('Local data is newer, syncing to cloud...');
+                    finalData = localData;
+                    syncToCloud(localData); // Upload local to cloud
+                } else {
+                    console.log('Cloud data is newer or same, using cloud data');
+                    finalData = cloudData;
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudData));
+                }
+            } else if (cloudData) {
+                // Only cloud data exists
+                console.log('Using cloud data');
+                finalData = cloudData;
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudData));
+            } else if (localData) {
+                // Only local data exists
+                console.log('Using local data');
+                finalData = localData;
+            }
+            
+            if (finalData && finalData.tree) {
+                rootNode = deserializeNode(finalData.tree);
+                if (finalData.currentCenterId) {
+                    const foundNode = findNodeById(rootNode, finalData.currentCenterId);
+                    if (foundNode) currentCenterNode = foundNode;
+                }
+                if (finalData.viewOffset) {
+                    viewOffset = finalData.viewOffset;
+                }
+            } else {
+                // First time use, create default main node
+                rootNode = new MindMapNode('main', '#ff6b6b', null);
+                setTimeout(() => saveToLocalStorage(), 100);
+            }
+            
+            draw();
         }
-
-
+        
+        initializeData();
+        
         let currentCenterNode = rootNode;
-        if (loadedData && loadedData.currentCenterId) {
-            const foundNode = findNodeById(rootNode, loadedData.currentCenterId);
-            if (foundNode) currentCenterNode = foundNode;
-        }
         
         let selectedNodes = new Set(); // 框選的節點
         let actualSelectedNodes = new Set(); // 實際選中的節點（考慮分支邏輯）
@@ -523,7 +628,7 @@
         let dragCurrent = { x: 0, y: 0 };
         let nodePositions = new Map();
         let hoveredNode = null;
-        let viewOffset = loadedData && loadedData.viewOffset ? loadedData.viewOffset : { x: 0, y: 0 };
+        let viewOffset = { x: 0, y: 0 };
         let isPanelOpen = false; // 追蹤面板是否開啟
         
         // 拖動節點相關

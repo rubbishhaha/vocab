@@ -37,7 +37,17 @@
 	 * Static Assets
 	 * https://developers.cloudflare.com/workers/static-assets/binding/
 	 */
-	"assets": {  "directory": "./public/",  "binding": "ASSETS" }
+	"assets": {  "directory": "./public/",  "binding": "ASSETS" },
+	/**
+	 * KV Namespaces
+	 * https://developers.cloudflare.com/workers/wrangler/configuration/#kv-namespaces
+	 */
+	"kv_namespaces": [
+		{
+			"binding": "asdf",
+			"id": "173f367c9acc4c6fa0e273229adb75c9"
+		}
+	]
 	/**
 	 * Service Bindings (communicate between multiple Workers)
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
