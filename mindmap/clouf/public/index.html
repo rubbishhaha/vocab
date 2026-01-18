@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Mindmap</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background: #1a1a1a;
+        }
+
+        #canvas {
+            display: block;
+            cursor: default;
+            user-select: none;
+        }
+
+        .input-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            display: none;
+            z-index: 1000;
+            min-width: 300px;
+        }
+
+        .input-panel.active {
+            display: block;
+        }
+
+        .input-panel h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .input-panel input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .input-panel label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+        }
+
+        .input-panel input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .input-panel button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .input-panel .finish-btn {
+            background: #4CAF50;
+            color: white;
+            margin-right: 10px;
+        }
+
+        .input-panel .cancel-btn {
+            background: #f44336;
+            color: white;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 15px 30px;
+            border-radius: 4px;
+            display: none;
+            z-index: 2000;
+        }
+
+        .notification.active {
+            display: block;
+        }
+
+        .notification button {
+            margin: 10px 5px 0;
+            padding: 5px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .notification .confirm-btn {
+            background: #f44336;
+            color: white;
+        }
+
+        .notification .cancel-btn {
+            background: #666;
+            color: white;
+        }
+
+        .info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 12px;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .edit-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            display: none;
+            z-index: 1000;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .edit-panel.active {
+            display: block;
+        }
+
+        .edit-panel h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .edit-panel .node-edit-item {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+
+        .edit-panel .node-edit-item h4 {
+            margin-bottom: 8px;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .edit-panel input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .edit-panel input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .edit-panel .overall-settings {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+
+        .edit-panel .overall-settings h4 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .edit-panel button {
+            margin-top: 10px;
+            margin-right: 10px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .edit-panel .save-btn {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .edit-panel .cancel-btn {
+            background: #f44336;
+            color: white;
+        }
+
+        .edit-panel .apply-all-btn {
+            background: #2196F3;
+            color: white;
+        }
+
+        .control-panel {
+            position: fixed;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 999;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .control-panel h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 14px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 8px;
+        }
+
+        .control-panel button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            background: #4CAF50;
+            color: white;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        .control-panel button:hover {
+            background: #45a049;
+        }
+
+        .control-panel button:active {
+            transform: scale(0.95);
+        }
+
+        .control-panel .btn-edit { background: #2196F3; }
+        .control-panel .btn-edit:hover { background: #0b7dda; }
+
+        .control-panel .btn-delete { background: #f44336; }
+        .control-panel .btn-delete:hover { background: #da190b; }
+
+        .control-panel .btn-copy { background: #FF9800; }
+        .control-panel .btn-copy:hover { background: #e68900; }
+
+        .control-panel .btn-nav { background: #9C27B0; }
+        .control-panel .btn-nav:hover { background: #7b1fa2; }
+
+        .control-panel .btn-view { background: #607D8B; }
+        .control-panel .btn-view:hover { background: #455a64; }
+
+        .control-panel-section {
+            border-top: 1px solid #eee;
+            padding-top: 8px;
+            margin-top: 5px;
+        }
+
+        .control-panel-section:first-child {
+            border-top: none;
+            margin-top: 0;
+            padding-top: 0;
+        }
+
+        @media (max-width: 768px) {
+            .control-panel {
+                right: 5px;
+                padding: 10px;
+                max-height: 85vh;
+            }
+            
+            .control-panel button {
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+            
+            .info {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="input-panel" id="inputPanel">
+        <h3>新增節點</h3>
+        <label>名稱:</label>
+        <input type="text" id="nodeNameInput" placeholder="輸入節點名稱">
+        <label>顏色:</label>
+        <input type="color" id="nodeColorInput" value="#ff6b6b">
+        <div>
+            <button class="finish-btn" onclick="finishAddNode()">完成</button>
+            <button class="cancel-btn" onclick="cancelAddNode()">取消</button>
+        </div>
+    </div>
+
+    <div class="notification" id="notification">
+        <p id="notificationText"></p>
+        <div>
+            <button class="confirm-btn" onclick="confirmDelete()">確認</button>
+            <button class="cancel-btn" onclick="cancelDelete()">取消</button>
+        </div>
+    </div>
+
+    <div class="info">
+        <div>左鍵拖曳: 選擇多個節點</div>
+        <div>Shift+點擊: 追加/取消選擇</div>
+        <div>左鍵點擊: 進入該層級</div>
+        <div>左鍵長按: 拖動節點</div>
+        <div>右鍵點擊(無選擇): 返回上層</div>
+        <div>右鍵點擊(有選擇): 編輯節點</div>
+        <div>WASD: 移動視野</div>
+        <div>Space: 新增節點</div>
+        <div>Shift+Space: 刪除</div>
+        <div>Ctrl+C/X/V/Z: 複製/剪下/貼上/復原</div>
+    </div>
+
+    <div class="control-panel">
+        <h4>控制面板</h4>
+        
+        <div class="control-panel-section">
+            <button onclick="btnAddNode()" title="新增節點">➕ 新增</button>
+            <button class="btn-edit" onclick="btnEditNode()" title="編輯選中節點">✏️ 編輯</button>
+            <button class="btn-delete" onclick="btnDeleteNode()" title="刪除節點">🗑️ 刪除</button>
+        </div>
+        
+        <div class="control-panel-section">
+            <button class="btn-copy" onclick="btnCopy()" title="複製">📋 複製</button>
+            <button class="btn-copy" onclick="btnCut()" title="剪下">✂️ 剪下</button>
+            <button class="btn-copy" onclick="btnPaste()" title="貼上">📌 貼上</button>
+            <button class="btn-copy" onclick="btnUndo()" title="復原">↩️ 復原</button>
+        </div>
+        
+        <div class="control-panel-section">
+            <button class="btn-nav" onclick="btnGoBack()" title="返回上層">⬆️ 上層</button>
+        </div>
+        
+        <div class="control-panel-section">
+            <button class="btn-view" onclick="btnMoveView('up')" title="向上移動視野">⬆️ 上</button>
+            <button class="btn-view" onclick="btnMoveView('down')" title="向下移動視野">⬇️ 下</button>
+            <button class="btn-view" onclick="btnMoveView('left')" title="向左移動視野">⬅️ 左</button>
+            <button class="btn-view" onclick="btnMoveView('right')" title="向右移動視野">➡️ 右</button>
+        </div>
+    </div>
+
+    <div class="edit-panel" id="editPanel">
+        <h3>編輯節點</h3>
+        
+        <div class="overall-settings">
+            <h4>整體設定</h4>
+            <label>所有選中節點的名稱:</label>
+            <input type="text" id="overallNameInput" placeholder="留空不更改">
+            <label>所有選中節點的顏色:</label>
+            <input type="color" id="overallColorInput">
+            <button class="apply-all-btn" onclick="applyOverallSettings()">應用至所有</button>
+        </div>
+        
+        <div id="individualEditsList"></div>
+        
+        <div>
+            <button class="save-btn" onclick="saveNodeEdits()">儲存</button>
+            <button class="cancel-btn" onclick="cancelNodeEdits()">取消</button>
+        </div>
+    </div>
+
+    <script>
+        // 數據結構
+        class MindMapNode {
+            constructor(name, color, parent = null) {
+                this.name = name;
+                this.color = color;
+                this.children = {};
+                this.parent = parent;
+                this.id = Date.now() + Math.random();
+            }
+
+            addChild(name, color) {
+                const child = new MindMapNode(name, color, this);
+                this.children[child.id] = child;
+                return child;
+            }
+
+            removeChild(childId) {
+                delete this.children[childId];
+            }
+
+            getDepth() {
+                let depth = 0;
+                let current = this;
+                while (current.parent) {
+                    depth++;
+                    current = current.parent;
+                }
+                return depth;
+            }
+        }
+
+        // 全局變量
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        // localStorage 存取函數
+        const STORAGE_KEY = 'mindmap_data';
+        
+        function saveToLocalStorage() {
+            try {
+                const data = {
+                    tree: serializeNode(rootNode),
+                    currentCenterId: currentCenterNode.id,
+                    viewOffset: viewOffset,
+                    timestamp: new Date().toISOString()
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            } catch (e) {
+                console.error('Failed to save to localStorage:', e);
+            }
+        }
+        
+        function loadFromLocalStorage() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    return parsed;
+                }
+            } catch (e) {
+                console.error('Failed to load from localStorage:', e);
+            }
+            return null;
+        }
+        
+        function serializeNode(node) {
+            return {
+                id: node.id,
+                name: node.name,
+                color: node.color,
+                children: Object.values(node.children).map(child => serializeNode(child))
+            };
+        }
+        
+        function deserializeNode(data, parent = null) {
+            const node = new MindMapNode(data.name, data.color, parent);
+            node.id = data.id;
+            data.children.forEach(childData => {
+                const child = deserializeNode(childData, node);
+                node.children[child.id] = child;
+            });
+            return node;
+        }
+        
+        function findNodeById(root, id) {
+            if (root.id === id) return root;
+            for (let child of Object.values(root.children)) {
+                const found = findNodeById(child, id);
+                if (found) return found;
+            }
+            return null;
+        }
+        // 初始化根節點
+        let rootNode;
+        let loadedData = loadFromLocalStorage();
+        
+        if (loadedData && loadedData.tree) {
+            // 從 localStorage 載入
+            rootNode = deserializeNode(loadedData.tree);
+        } else {
+            // 第一次使用，創建預設的 main 節點
+            rootNode = new MindMapNode('main', '#ff6b6b', null);
+            // 保存初始狀態
+            setTimeout(() => saveToLocalStorage(), 100);
+        }
+
+
+        let currentCenterNode = rootNode;
+        if (loadedData && loadedData.currentCenterId) {
+            const foundNode = findNodeById(rootNode, loadedData.currentCenterId);
+            if (foundNode) currentCenterNode = foundNode;
+        }
+        
+        let selectedNodes = new Set(); // 框選的節點
+        let actualSelectedNodes = new Set(); // 實際選中的節點（考慮分支邏輯）
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let dragCurrent = { x: 0, y: 0 };
+        let nodePositions = new Map();
+        let hoveredNode = null;
+        let viewOffset = loadedData && loadedData.viewOffset ? loadedData.viewOffset : { x: 0, y: 0 };
+        let isPanelOpen = false; // 追蹤面板是否開啟
+        
+        // 拖動節點相關
+        let isDraggingNode = false;
+        let draggedNode = null;
+        let dragNodeStart = { x: 0, y: 0 };
+        let dragNodeOffset = { x: 0, y: 0 };
+        let nodePositionsBackup = new Map();
+        let dragNodeStartTime = 0;
+        let lastDragEndTime = 0; // 上次拖動結束時間
+        let permanentNodeOffsets = new Map(); // 永久的節點偏移
+
+        // 剪貼簿和歷史
+        let clipboard = null;
+        let clipboardMode = null; // 'copy' or 'cut'
+        let history = [];
+        let historyIndex = -1;
+
+        // 顏色生成
+        const layerColors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#74b9ff', '#a29bfe'];
+        
+        function getLayerColor(depth) {
+            return layerColors[depth % layerColors.length];
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            draw();
+        }
+
+        // 繪製函數
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            nodePositions.clear();
+
+            // 繪製中心節點
+            const centerX = width / 2 + viewOffset.x;
+            const centerY = height / 2 + viewOffset.y;
+            const centerDepth = currentCenterNode.getDepth();
+
+            // 先繪製所有連線（在底層）
+            drawConnectionsOnly(currentCenterNode, centerX, centerY, centerDepth, 0, null);
+            
+            // 再繪製所有節點（在上層）
+            drawNode(centerX, centerY, currentCenterNode, centerDepth, true);
+            drawNodesOnly(currentCenterNode, centerX, centerY, centerDepth, 0, null);
+
+            // 繪製選擇框
+            if (isDragging) {
+                ctx.strokeStyle = '#00ff00';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.strokeRect(
+                    dragStart.x,
+                    dragStart.y,
+                    dragCurrent.x - dragStart.x,
+                    dragCurrent.y - dragStart.y
+                );
+                ctx.setLineDash([]);
+            }
+        }
+
+        function drawNode(x, y, node, baseDepth, isCenter = false) {
+            // 應用拖動偏移
+            const offset = getNodeDragOffset(node.id);
+            x += offset.x;
+            y += offset.y;
+            
+            const nodeDepth = node.getDepth() - baseDepth;
+            const minSize = isCenter ? 80 : 60;
+            const radius = 8; // 圓角半徑
+            const padding = 10;
+            const lineHeight = 18;
+            const maxWidth = minSize - padding * 2;
+            let color = node.color;
+
+            // 懸停效果
+            if (hoveredNode && hoveredNode.id === node.id) {
+                color = '#ffeb3b'; // 黃色高亮
+            }
+            
+            // 拖動中的節點半透明顯示
+            if (isDraggingNode && draggedNode && draggedNode.id === node.id) {
+                ctx.globalAlpha = 0.7;
+            }
+
+            // 計算文字換行
+            ctx.font = isCenter ? 'bold 16px Arial' : '14px Arial';
+            const wrapResult = wrapText(node.name, maxWidth);
+            const lines = wrapResult.lines;
+            const actualMaxWidth = wrapResult.maxWidth;
+            
+            // 計算實際方塊大小
+            const textHeight = lines.length * lineHeight;
+            const blockHeight = Math.max(minSize, textHeight + padding * 2);
+            const blockWidth = Math.max(minSize, actualMaxWidth + padding * 2);
+
+            // 繪製圓角方塊
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.roundRect(x - blockWidth/2, y - blockHeight/2, blockWidth, blockHeight, radius);
+            ctx.fill();
+
+            // 框選的節點顯示綠色邊框
+            if (selectedNodes.has(node.id)) {
+                ctx.strokeStyle = '#00ff00';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.roundRect(x - blockWidth/2 - 2, y - blockHeight/2 - 2, blockWidth + 4, blockHeight + 4, radius);
+                ctx.stroke();
+            }
+
+            // 實際選中的節點（包含分支邏輯）顯示更粗的邊框
+            if (actualSelectedNodes.has(node.id) && !selectedNodes.has(node.id)) {
+                ctx.strokeStyle = '#4CAF50';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(x - blockWidth/2 - 1, y - blockHeight/2 - 1, blockWidth + 2, blockHeight + 2, radius);
+                ctx.stroke();
+            }
+
+            // 繪製文字（多行）
+            ctx.fillStyle = '#000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const startY = y - (lines.length - 1) * lineHeight / 2;
+            lines.forEach((line, i) => {
+                ctx.fillText(line, x, startY + i * lineHeight);
+            });
+            
+            // 重置透明度
+            ctx.globalAlpha = 1.0;
+
+            // 記錄位置（使用實際大小）
+            nodePositions.set(node.id, { x, y, size: Math.max(blockWidth, blockHeight), node });
+        }
+        
+        function wrapText(text, maxWidth) {
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = '';
+            let actualMaxWidth = 0;
+            
+            words.forEach((word, index) => {
+                const testLine = currentLine ? currentLine + ' ' + word : word;
+                const metrics = ctx.measureText(testLine);
+                
+                if (metrics.width > maxWidth && currentLine.length > 0) {
+                    // 當前行加上這個單詞超過寬度，換行
+                    const lineMetrics = ctx.measureText(currentLine);
+                    actualMaxWidth = Math.max(actualMaxWidth, lineMetrics.width);
+                    lines.push(currentLine);
+                    currentLine = word;
+                } else {
+                    currentLine = testLine;
+                }
+            });
+            
+            if (currentLine) {
+                const lineMetrics = ctx.measureText(currentLine);
+                actualMaxWidth = Math.max(actualMaxWidth, lineMetrics.width);
+                lines.push(currentLine);
+            }
+            
+            return {
+                lines: lines.length > 0 ? lines : [text],
+                maxWidth: actualMaxWidth > 0 ? actualMaxWidth : ctx.measureText(text).width
+            };
+        }
+
+        // 只繪製連線
+        function drawConnectionsOnly(parentNode, parentX, parentY, baseDepth, currentLayer, parentAngle) {
+            if (currentLayer >= 2) return;
+            
+            // 應用父節點拖動偏移
+            const parentOffset = getNodeDragOffset(parentNode.id);
+            parentX += parentOffset.x;
+            parentY += parentOffset.y;
+            
+            const children = Object.values(parentNode.children);
+            if (children.length === 0) return;
+            
+            const radius = 200 + currentLayer * 150;
+            const isCenter = (currentLayer === 0);
+            const angleStep = isCenter ? 
+                (Math.PI * 2) / children.length : 
+                (Math.PI * 2) / (children.length + 1);
+            
+            let startAngle;
+            if (isCenter) {
+                startAngle = -Math.PI / 2;
+            } else {
+                // 子塊的起始角度基於父連線角度
+                // 父連線從子塊視角來看是 parentAngle + PI（反方向）
+                const parentDirection = parentAngle + Math.PI;
+                startAngle = parentDirection + angleStep;
+            }
+            
+            children.forEach((child, index) => {
+                const angle = startAngle + angleStep * index;
+                const baseX = parentX + Math.cos(angle) * radius;
+                const baseY = parentY + Math.sin(angle) * radius;
+                
+                // 應用子節點拖動偏移
+                const childOffset = getNodeDragOffset(child.id);
+                const childX = baseX + childOffset.x;
+                const childY = baseY + childOffset.y;
+                
+                // 繪製連線（從父節點的實際位置到子節點的實際位置）
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(parentX, parentY);
+                ctx.lineTo(childX, childY);
+                ctx.stroke();
+                
+                // 遞歸繪製子節點的連線（傳遞基礎位置，不含偏移）
+                drawConnectionsOnly(child, baseX, baseY, baseDepth, currentLayer + 1, angle);
+            });
+        }
+        
+        // 只繪製節點
+        function drawNodesOnly(parentNode, parentX, parentY, baseDepth, currentLayer, parentAngle) {
+            if (currentLayer >= 2) return;
+            
+            // 應用父節點拖動偏移
+            const parentOffset = getNodeDragOffset(parentNode.id);
+            parentX += parentOffset.x;
+            parentY += parentOffset.y;
+            
+            const children = Object.values(parentNode.children);
+            if (children.length === 0) return;
+            
+            const radius = 200 + currentLayer * 150;
+            const isCenter = (currentLayer === 0);
+            const angleStep = isCenter ? 
+                (Math.PI * 2) / children.length : 
+                (Math.PI * 2) / (children.length + 1);
+            
+            let startAngle;
+            if (isCenter) {
+                startAngle = -Math.PI / 2;
+            } else {
+                const parentDirection = parentAngle + Math.PI;
+                startAngle = parentDirection + angleStep;
+            }
+            
+            children.forEach((child, index) => {
+                const angle = startAngle + angleStep * index;
+                const x = parentX + Math.cos(angle) * radius;
+                const y = parentY + Math.sin(angle) * radius;
+                
+                // 繪製節點
+                drawNode(x, y, child, baseDepth);
+                
+                // 遞歸繪製子節點（傳遞實際位置）
+                drawNodesOnly(child, x, y, baseDepth, currentLayer + 1, angle);
+            });
+        }
+
+        // 檢查點是否在矩形內
+        function isPointInRect(px, py, x, y, size) {
+            return px >= x - size/2 && px <= x + size/2 &&
+                   py >= y - size/2 && py <= y + size/2;
+        }
+
+        // 獲取點擊的節點
+        function getNodeAtPosition(x, y) {
+            for (let [id, pos] of nodePositions) {
+                if (isPointInRect(x, y, pos.x, pos.y, pos.size)) {
+                    return pos.node;
+                }
+            }
+            return null;
+        }
+
+        // 獲取選擇框內的節點
+        function getNodesInSelection(x1, y1, x2, y2) {
+            const minX = Math.min(x1, x2);
+            const maxX = Math.max(x1, x2);
+            const minY = Math.min(y1, y2);
+            const maxY = Math.max(y1, y2);
+
+            const nodes = [];
+            for (let [id, pos] of nodePositions) {
+                if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+                    nodes.push(pos.node);
+                }
+            }
+            return nodes;
+        }
+
+        // 滑鼠事件
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return; // 只處理左鍵
+            
+            const node = getNodeAtPosition(e.clientX, e.clientY);
+            dragNodeStartTime = Date.now();
+            
+            if (node) {
+                // 點擊節點，可能是要拖動
+                draggedNode = node;
+                dragNodeStart = { x: e.clientX, y: e.clientY };
+                const pos = nodePositions.get(node.id);
+                dragNodeOffset = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+            } else {
+                // 點擊空白，開始框選
+                isDragging = true;
+                dragStart = { x: e.clientX, y: e.clientY };
+                dragCurrent = { x: e.clientX, y: e.clientY };
+                selectedNodes.clear();
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                dragCurrent = { x: e.clientX, y: e.clientY };
+                draw();
+            } else if (draggedNode && Date.now() - dragNodeStartTime > 150) {
+                // 長按超過150ms，開始拖動節點
+                const dx = e.clientX - dragNodeStart.x;
+                const dy = e.clientY - dragNodeStart.y;
+                
+                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                    isDraggingNode = true;
+                    dragCurrent = { x: e.clientX, y: e.clientY };
+                    canvas.style.cursor = 'grabbing';
+                }
+                draw();
+            } else {
+                // 檢查鼠標懸停
+                const node = getNodeAtPosition(e.clientX, e.clientY);
+                if (node !== hoveredNode) {
+                    hoveredNode = node;
+                    draw();
+                }
+                canvas.style.cursor = node ? 'pointer' : 'default';
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (isDraggingNode) {
+                // 保存拖動偏移到永久記錄（只為拖動的節點保存）
+                const dx = dragCurrent.x - dragNodeStart.x;
+                const dy = dragCurrent.y - dragNodeStart.y;
+                const currentOffset = permanentNodeOffsets.get(draggedNode.id) || { x: 0, y: 0 };
+                permanentNodeOffsets.set(draggedNode.id, {
+                    x: currentOffset.x + dx,
+                    y: currentOffset.y + dy
+                });
+                
+                // 結束拖動節點
+                isDraggingNode = false;
+                draggedNode = null;
+                lastDragEndTime = Date.now();
+                canvas.style.cursor = 'default';
+                draw();
+            } else if (isDragging) {
+                const nodes = getNodesInSelection(dragStart.x, dragStart.y, e.clientX, e.clientY);
+                if (!e.shiftKey) {
+                    selectedNodes.clear();
+                }
+                nodes.forEach(node => selectedNodes.add(node.id));
+                updateActualSelectedNodes();
+                isDragging = false;
+                draw();
+            } else if (draggedNode) {
+                // 短按，不是拖動，清除拖動狀態
+                draggedNode = null;
+            }
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (isDragging || isDraggingNode) return;
+            
+            // 如果剛拖動完，等待 300ms 才允許點擊進入
+            if (Date.now() - lastDragEndTime < 300) return;
+            
+            const node = getNodeAtPosition(e.clientX, e.clientY);
+            if (node) {
+                if (e.shiftKey) {
+                    // Shift+點擊追加選擇
+                    if (selectedNodes.has(node.id)) {
+                        selectedNodes.delete(node.id);
+                    } else {
+                        selectedNodes.add(node.id);
+                    }
+                    updateActualSelectedNodes();
+                    draw();
+                } else if (node !== currentCenterNode) {
+                    // 進入該層級
+                    currentCenterNode = node;
+                    selectedNodes.clear();
+                    actualSelectedNodes.clear();
+                    saveHistory();
+                    saveToLocalStorage();
+                    draw();
+                }
+            }
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            
+            const node = getNodeAtPosition(e.clientX, e.clientY);
+            
+            // Shift+右鍵：取消選擇節點
+            if (e.shiftKey && node && selectedNodes.has(node.id)) {
+                selectedNodes.delete(node.id);
+                updateActualSelectedNodes();
+                draw();
+                return;
+            }
+            
+            // 如果有選中的節點，打開編輯面板
+            if (selectedNodes.size > 0) {
+                openEditPanel();
+                return;
+            }
+            
+            if (!node && currentCenterNode.parent) {
+                // 返回上層
+                currentCenterNode = currentCenterNode.parent;
+                selectedNodes.clear();
+                actualSelectedNodes.clear();
+                saveHistory();
+                saveToLocalStorage();
+                draw();
+            }
+        });
+
+        // 更新實際選中的節點（考慮分支邏輯）
+        function updateActualSelectedNodes() {
+            actualSelectedNodes.clear();
+            
+            if (selectedNodes.size === 0) return;
+            
+            const selectedArray = Array.from(selectedNodes).map(id => {
+                for (let [_, pos] of nodePositions) {
+                    if (pos.node.id === id) return pos.node;
+                }
+            }).filter(n => n);
+            
+            // 為每個選中的節點計算其實際包含的節點
+            selectedArray.forEach(node => {
+                actualSelectedNodes.add(node.id);
+                
+                // 檢查是否有選中該節點的子節點
+                const hasSelectedChild = selectedArray.some(other => {
+                    return other !== node && isDescendant(other, node);
+                });
+                
+                if (!hasSelectedChild) {
+                    // 如果沒有選中子節點，則包含所有子節點
+                    addAllDescendants(node, actualSelectedNodes);
+                } else {
+                    // 如果有選中子節點，則只包含選中的那些分支
+                    // 不做任何事，讓遞歸處理
+                }
+            });
+        }
+        
+        function isDescendant(node, ancestor) {
+            let current = node.parent;
+            while (current) {
+                if (current.id === ancestor.id) return true;
+                current = current.parent;
+            }
+            return false;
+        }
+        
+        function addAllDescendants(node, set) {
+            Object.values(node.children).forEach(child => {
+                set.add(child.id);
+                addAllDescendants(child, set);
+            });
+        }
+
+        // 鍵盤事件
+        document.addEventListener('keydown', (e) => {
+            // 如果焦點在輸入元素上，允許所有按鍵
+            const isInputFocused = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+            
+            if (isPanelOpen) {
+                if (e.code === 'Escape') {
+                    e.preventDefault();
+                    cancelAddNode();
+                    cancelDelete();
+                    return;
+                }
+                // 如果焦點在輸入框，允許所有按鍵用於打字
+                if (isInputFocused) {
+                    return;
+                }
+                // 焦點不在輸入框時，阻止心智圖控制鍵
+                e.preventDefault();
+                return;
+            }
+            
+            // WASD - 移動視野
+            if (e.code === 'KeyW') {
+                e.preventDefault();
+                viewOffset.y += 30;
+                saveToLocalStorage();
+                draw();
+            }
+            else if (e.code === 'KeyS') {
+                e.preventDefault();
+                viewOffset.y -= 30;
+                saveToLocalStorage();
+                draw();
+            }
+            else if (e.code === 'KeyA') {
+                e.preventDefault();
+                viewOffset.x += 30;
+                saveToLocalStorage();
+                draw();
+            }
+            else if (e.code === 'KeyD') {
+                e.preventDefault();
+                viewOffset.x -= 30;
+                saveToLocalStorage();
+                draw();
+            }
+            
+            // Space - 新增節點
+            else if (e.code === 'Space' && !e.shiftKey && !e.ctrlKey) {
+                e.preventDefault();
+                openAddNodePanel();
+            }
+            
+            // Shift + Space - 刪除節點
+            else if (e.code === 'Space' && e.shiftKey) {
+                e.preventDefault();
+                openDeleteConfirmation();
+            }
+            
+            // Ctrl + C - 複製
+            else if (e.code === 'KeyC' && e.ctrlKey && !e.shiftKey) {
+                e.preventDefault();
+                copyNodes();
+            }
+            
+            // Ctrl + X - 剪下
+            else if (e.code === 'KeyX' && e.ctrlKey) {
+                e.preventDefault();
+                cutNodes();
+            }
+            
+            // Ctrl + V - 貼上
+            else if (e.code === 'KeyV' && e.ctrlKey) {
+                e.preventDefault();
+                pasteNodes();
+            }
+            
+            // Ctrl + Z - 復原
+            else if (e.code === 'KeyZ' && e.ctrlKey) {
+                e.preventDefault();
+                undo();
+            }
+        });
+
+        // 新增節點面板
+        function openAddNodePanel() {
+            const panel = document.getElementById('inputPanel');
+            const nameInput = document.getElementById('nodeNameInput');
+            const colorInput = document.getElementById('nodeColorInput');
+            
+            const targetNodes = selectedNodes.size > 0 ? 
+                Array.from(selectedNodes).map(id => {
+                    for (let [_, pos] of nodePositions) {
+                        if (pos.node.id === id) return pos.node;
+                    }
+                }).filter(n => n) : [currentCenterNode];
+            
+            const depth = targetNodes[0].getDepth() + 1;
+            colorInput.value = getLayerColor(depth);
+            nameInput.value = '';
+            panel.classList.add('active');
+            isPanelOpen = true;
+            nameInput.focus();
+        }
+
+        function finishAddNode() {
+            const panel = document.getElementById('inputPanel');
+            const name = document.getElementById('nodeNameInput').value.trim();
+            const color = document.getElementById('nodeColorInput').value;
+            
+            if (!name) {
+                alert('請輸入節點名稱');
+                return;
+            }
+
+            const targetNodes = selectedNodes.size > 0 ? 
+                Array.from(selectedNodes).map(id => {
+                    for (let [_, pos] of nodePositions) {
+                        if (pos.node.id === id) return pos.node;
+                    }
+                }).filter(n => n) : [currentCenterNode];
+
+            targetNodes.forEach(node => {
+                node.addChild(name, color);
+            });
+
+            saveHistory();
+            saveToLocalStorage();
+            panel.classList.remove('active');
+            isPanelOpen = false;
+            selectedNodes.clear();
+            actualSelectedNodes.clear();
+            draw();
+        }
+
+        function cancelAddNode() {
+            document.getElementById('inputPanel').classList.remove('active');
+            isPanelOpen = false;
+        }
+
+        // 刪除確認
+        function openDeleteConfirmation() {
+            const targetNode = selectedNodes.size > 0 ? 
+                Array.from(selectedNodes).map(id => {
+                    for (let [_, pos] of nodePositions) {
+                        if (pos.node.id === id) return pos.node;
+                    }
+                })[0] : currentCenterNode;
+
+            if (!targetNode) return;
+
+            const notification = document.getElementById('notification');
+            const text = document.getElementById('notificationText');
+            text.textContent = `確定要刪除 "${targetNode.name}" 及其所有子節點嗎？`;
+            notification.classList.add('active');
+            isPanelOpen = true;
+        }
+
+        function confirmDelete() {
+            const targetNodes = selectedNodes.size > 0 ? 
+                Array.from(selectedNodes).map(id => {
+                    for (let [_, pos] of nodePositions) {
+                        if (pos.node.id === id) return pos.node;
+                    }
+                }).filter(n => n) : [currentCenterNode];
+
+            targetNodes.forEach(node => {
+                if (node.parent) {
+                    node.parent.removeChild(node.id);
+                    if (node === currentCenterNode && node.parent) {
+                        currentCenterNode = node.parent;
+                    }
+                } else if (node === rootNode) {
+                    // 清空根節點的子節點
+                    node.children = {};
+                }
+            });
+
+            saveHistory();
+            saveToLocalStorage();
+            selectedNodes.clear();
+            actualSelectedNodes.clear();
+            document.getElementById('notification').classList.remove('active');
+            isPanelOpen = false;
+            draw();
+        }
+
+        function cancelDelete() {
+            document.getElementById('notification').classList.remove('active');
+            isPanelOpen = false;
+        }
+
+        // 複製/剪下/貼上
+        function copyNodes() {
+            if (selectedNodes.size > 0) {
+                updateActualSelectedNodes();
+                
+                // 只複製框選的節點（不包括自動包含的分支）
+                clipboard = Array.from(selectedNodes).map(id => {
+                    for (let [_, pos] of nodePositions) {
+                        if (pos.node.id === id) {
+                            // 複製節點及其完整子樹
+                            return cloneNodeWithBranches(pos.node);
+                        }
+                    }
+                }).filter(n => n);
+                clipboardMode = 'copy';
+            }
+        }
+
+        function cutNodes() {
+            if (selectedNodes.size > 0) {
+                updateActualSelectedNodes();
+                
+                // 剪下時只剪下框選的節點，不包括根節點
+                clipboard = Array.from(selectedNodes).map(id => {
+                    for (let [_, pos] of nodePositions) {
+                        if (pos.node.id === id && pos.node.parent) {
+                            return pos.node;
+                        }
+                    }
+                }).filter(n => n);
+                clipboardMode = 'cut';
+            }
+        }
+        
+        function cloneNodeWithBranches(node) {
+            const cloned = new MindMapNode(node.name, node.color, null);
+            Object.values(node.children).forEach(child => {
+                const clonedChild = cloneNodeWithBranches(child);
+                clonedChild.parent = cloned;
+                cloned.children[clonedChild.id] = clonedChild;
+            });
+            return cloned;
+        }
+
+        function pasteNodes() {
+            if (!clipboard || clipboard.length === 0) return;
+
+            const targetNodes = selectedNodes.size > 0 ? 
+                Array.from(selectedNodes).map(id => {
+                    for (let [_, pos] of nodePositions) {
+                        if (pos.node.id === id) return pos.node;
+                    }
+                }).filter(n => n) : [currentCenterNode];
+
+            targetNodes.forEach(targetNode => {
+                clipboard.forEach(clipNode => {
+                    if (clipboardMode === 'cut' && clipNode.parent) {
+                        clipNode.parent.removeChild(clipNode.id);
+                        clipNode.parent = targetNode;
+                        targetNode.children[clipNode.id] = clipNode;
+                    } else {
+                        const cloned = cloneNodeWithBranches(clipNode);
+                        cloned.parent = targetNode;
+                        targetNode.children[cloned.id] = cloned;
+                    }
+                });
+            });
+
+            if (clipboardMode === 'cut') {
+                clipboard = null;
+                clipboardMode = null;
+            }
+
+            saveHistory();
+            saveToLocalStorage();
+            selectedNodes.clear();
+            actualSelectedNodes.clear();
+            draw();
+        }
+
+        // 歷史記錄
+        function saveHistory() {
+            const state = {
+                root: cloneNodeWithBranches(rootNode),
+                center: currentCenterNode.id
+            };
+            history = history.slice(0, historyIndex + 1);
+            history.push(state);
+            historyIndex++;
+            if (history.length > 50) {
+                history.shift();
+                historyIndex--;
+            }
+        }
+
+        function undo() {
+            if (historyIndex > 0) {
+                historyIndex--;
+                // 這裡簡化處理，實際需要完整的狀態恢復
+                draw();
+            }
+        }
+
+        // 初始化
+        window.addEventListener('resize', resize);
+        resize();
+        saveHistory();
+
+        // 編輯面板相關函數
+        let editingNodes = [];
+        
+        function openEditPanel() {
+            const panel = document.getElementById('editPanel');
+            const individualList = document.getElementById('individualEditsList');
+            
+            // 獲取選中的節點
+            editingNodes = Array.from(selectedNodes).map(id => {
+                for (let [_, pos] of nodePositions) {
+                    if (pos.node.id === id) return pos.node;
+                }
+            }).filter(n => n);
+            
+            if (editingNodes.length === 0) return;
+            
+            // 清空個別編輯列表
+            individualList.innerHTML = '';
+            
+            // 為每個節點創建編輯項
+            editingNodes.forEach((node, index) => {
+                const item = document.createElement('div');
+                item.className = 'node-edit-item';
+                item.innerHTML = `
+                    <h4>節點 ${index + 1}: ${node.name}</h4>
+                    <label>名稱:</label>
+                    <input type="text" class="individual-name" data-index="${index}" value="${node.name}">
+                    <label>顏色:</label>
+                    <input type="color" class="individual-color" data-index="${index}" value="${node.color}">
+                `;
+                individualList.appendChild(item);
+            });
+            
+            // 設置整體設定的預設值
+            document.getElementById('overallNameInput').value = '';
+            document.getElementById('overallColorInput').value = editingNodes[0].color;
+            
+            panel.classList.add('active');
+            isPanelOpen = true;
+        }
+        
+        function applyOverallSettings() {
+            const overallName = document.getElementById('overallNameInput').value.trim();
+            const overallColor = document.getElementById('overallColorInput').value;
+            
+            editingNodes.forEach((node, index) => {
+                if (overallName) {
+                    node.name = overallName;
+                    const nameInput = document.querySelector(`.individual-name[data-index="${index}"]`);
+                    if (nameInput) nameInput.value = overallName;
+                }
+                node.color = overallColor;
+                const colorInput = document.querySelector(`.individual-color[data-index="${index}"]`);
+                if (colorInput) colorInput.value = overallColor;
+            });
+            
+            draw();
+        }
+        
+        function saveNodeEdits() {
+            // 應用個別編輯
+            editingNodes.forEach((node, index) => {
+                const nameInput = document.querySelector(`.individual-name[data-index="${index}"]`);
+                const colorInput = document.querySelector(`.individual-color[data-index="${index}"]`);
+                
+                if (nameInput && nameInput.value.trim()) {
+                    node.name = nameInput.value.trim();
+                }
+                if (colorInput) {
+                    node.color = colorInput.value;
+                }
+            });
+            
+            saveHistory();
+            saveToLocalStorage();
+            
+            const panel = document.getElementById('editPanel');
+            panel.classList.remove('active');
+            isPanelOpen = false;
+            editingNodes = [];
+            draw();
+        }
+        
+        function cancelNodeEdits() {
+            const panel = document.getElementById('editPanel');
+            panel.classList.remove('active');
+            isPanelOpen = false;
+            editingNodes = [];
+            draw();
+        }
+        
+        // 修改 drawNodesOnly 以支持拖動偏移
+        function getNodeDragOffset(nodeId) {
+            // 獲取永久偏移
+            const permanent = permanentNodeOffsets.get(nodeId) || { x: 0, y: 0 };
+            
+            // 如果正在拖動這個節點，加上當前拖動偏移
+            if (isDraggingNode && draggedNode && draggedNode.id === nodeId) {
+                const dx = dragCurrent.x - dragNodeStart.x;
+                const dy = dragCurrent.y - dragNodeStart.y;
+                return { x: permanent.x + dx, y: permanent.y + dy };
+            }
+            
+            return permanent;
+        }
+        
+        function findNodeInTree(nodeId) {
+            function search(node) {
+                if (node.id === nodeId) return node;
+                for (let child of Object.values(node.children)) {
+                    const found = search(child);
+                    if (found) return found;
+                }
+                return null;
+            }
+            return search(rootNode);
+        }
+
+        // Enter鍵快捷鍵
+        document.getElementById('nodeNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                finishAddNode();
+            }
+        });
+
+        // 控制面板按鈕函數
+        function btnAddNode() {
+            openAddNodePanel();
+        }
+
+        function btnEditNode() {
+            if (selectedNodes.size > 0) {
+                openEditPanel();
+            } else {
+                alert('請先選擇要編輯的節點');
+            }
+        }
+
+        function btnDeleteNode() {
+            openDeleteConfirmation();
+        }
+
+        function btnCopy() {
+            copyNodes();
+            if (selectedNodes.size > 0) {
+                showToast('已複製 ' + selectedNodes.size + ' 個節點');
+            }
+        }
+
+        function btnCut() {
+            cutNodes();
+            if (selectedNodes.size > 0) {
+                showToast('已剪下 ' + selectedNodes.size + ' 個節點');
+            }
+        }
+
+        function btnPaste() {
+            if (clipboard && clipboard.length > 0) {
+                pasteNodes();
+                showToast('已貼上節點');
+            } else {
+                alert('剪貼簿為空');
+            }
+        }
+
+        function btnUndo() {
+            undo();
+            showToast('已復原');
+        }
+
+        function btnGoBack() {
+            if (currentCenterNode.parent) {
+                currentCenterNode = currentCenterNode.parent;
+                selectedNodes.clear();
+                actualSelectedNodes.clear();
+                saveHistory();
+                saveToLocalStorage();
+                draw();
+                showToast('返回上層');
+            } else {
+                alert('已在最上層');
+            }
+        }
+
+        function btnMoveView(direction) {
+            const step = 30;
+            switch(direction) {
+                case 'up':
+                    viewOffset.y += step;
+                    break;
+                case 'down':
+                    viewOffset.y -= step;
+                    break;
+                case 'left':
+                    viewOffset.x += step;
+                    break;
+                case 'right':
+                    viewOffset.x -= step;
+                    break;
+            }
+            saveToLocalStorage();
+            draw();
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.style.position = 'fixed';
+            toast.style.bottom = '20px';
+            toast.style.left = '50%';
+            toast.style.transform = 'translateX(-50%)';
+            toast.style.background = 'rgba(0, 0, 0, 0.8)';
+            toast.style.color = 'white';
+            toast.style.padding = '10px 20px';
+            toast.style.borderRadius = '4px';
+            toast.style.zIndex = '3000';
+            toast.style.fontSize = '14px';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
