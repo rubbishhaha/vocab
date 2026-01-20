@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Vocab Trainer</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+		
+		body {
+			font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			min-height: 100vh;
+			background-image: url('asset/red-and-blue-pillars-wallpaper-abstract-background-free-image.webp');
+			background-size: cover;
+			background-position: center;
+			background-attachment: fixed;
+			position: relative;
+		}
+		
+		body::before {
+			content: '';
+			position: absolute;
+			top: 0;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			background: rgba(0, 0, 0, 0.4);
+			z-index: 1;
+		}
+		
+		.container {
+			position: relative;
+			z-index: 2;
+			max-width: 1200px;
+			margin: 0 auto;
+			padding: 20px;
+		}
+		
+		header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin-bottom: 30px;
+			flex-wrap: wrap;
+			gap: 20px;
+		}
+		
+		h1 {
+			margin: 0;
+			font-size: 2.5rem;
+			color: white;
+			text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+		}
+		
+		.stats {
+			display: flex;
+			gap: 15px;
+			align-items: center;
+			flex-wrap: wrap;
+		}
+		
+		.card {
+			background: rgba(255, 255, 255, 0.15);
+			backdrop-filter: blur(10px);
+			border: 1px solid rgba(255, 255, 255, 0.2);
+			padding: 15px 20px;
+			border-radius: 15px;
+			color: white;
+			transition: all 0.3s ease;
+		}
+		
+		.card:hover {
+			background: rgba(255, 255, 255, 0.2);
+			transform: translateY(-2px);
+		}
+		
+		.section {
+			background: rgba(255, 255, 255, 0.1);
+			backdrop-filter: blur(10px);
+			border: 1px solid rgba(255, 255, 255, 0.2);
+			padding: 25px;
+			border-radius: 20px;
+			margin-bottom: 30px;
+			transition: all 0.3s ease;
+		}
+		
+		.section:hover {
+			background: rgba(255, 255, 255, 0.15);
+		}
+		
+		h2 {
+			color: white;
+			margin-bottom: 20px;
+			font-size: 1.5rem;
+			text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+		}
+		
+		h3 {
+			color: white;
+			margin: 20px 0 15px 0;
+			font-size: 1.2rem;
+		}
+		
+		input[type=text], textarea {
+			width: 100%;
+			padding: 12px 15px;
+			border: none;
+			border-radius: 10px;
+			background: rgba(255, 255, 255, 0.9);
+			backdrop-filter: blur(10px);
+			font-size: 1rem;
+			margin-bottom: 15px;
+			transition: all 0.3s ease;
+		}
+		
+		input[type=text]:focus, textarea:focus {
+			outline: none;
+			background: rgba(255, 255, 255, 1);
+			transform: scale(1.02);
+		}
+		
+		button {
+			padding: 12px 20px;
+			border-radius: 25px;
+			border: none;
+			cursor: pointer;
+			font-size: 1rem;
+			transition: all 0.3s ease;
+			margin-right: 10px;
+			margin-bottom: 10px;
+		}
+		
+		button:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+		}
+		
+		button.primary {
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			color: white;
+		}
+		
+		button.success {
+			background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+			color: white;
+		}
+		
+		button.danger {
+			background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+			color: white;
+		}
+		
+		button.secondary {
+			background: rgba(255, 255, 255, 0.2);
+			color: white;
+			border: 1px solid rgba(255, 255, 255, 0.3);
+		}
+		
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			margin-top: 15px;
+			background: rgba(255, 255, 255, 0.1);
+			border-radius: 10px;
+			overflow: hidden;
+		}
+		
+		td, th {
+			padding: 12px 15px;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+			color: white;
+		}
+		
+		th {
+			background: rgba(255, 255, 255, 0.1);
+			font-weight: 600;
+		}
+		
+		tr:hover {
+			background: rgba(255, 255, 255, 0.05);
+		}
+		
+		.muted {
+			color: rgba(255, 255, 255, 0.7);
+			font-size: 0.9rem;
+		}
+		
+		.label {
+			display: block;
+			color: white;
+			margin-bottom: 8px;
+			font-weight: 500;
+		}
+		
+		.quiz-redirect {
+			text-align: center;
+			padding: 30px;
+			background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+			border-radius: 20px;
+			margin-bottom: 30px;
+		}
+		
+		.quiz-redirect h2 {
+			margin-bottom: 15px;
+		}
+		
+		.quiz-link {
+			display: inline-block;
+			padding: 15px 30px;
+			background: white;
+			color: #ff6b6b;
+			text-decoration: none;
+			border-radius: 25px;
+			font-weight: bold;
+			transition: all 0.3s ease;
+		}
+		
+		.quiz-link:hover {
+			transform: translateY(-3px);
+			box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
+		}
+		
+		.button-group {
+			display: flex;
+			gap: 10px;
+			margin-top: 15px;
+			flex-wrap: wrap;
+		}
+		
+		.floating-elements {
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			pointer-events: none;
+			z-index: 1;
+		}
+		
+		.floating-element {
+			position: absolute;
+			opacity: 0.1;
+			animation: float 8s infinite ease-in-out;
+		}
+		
+		@keyframes float {
+			0%, 100% { transform: translateY(0) rotate(0deg); }
+			50% { transform: translateY(-30px) rotate(180deg); }
+		}
+		
+		.add-animation {
+			animation: addVocab 0.5s ease-out;
+		}
+		
+		@keyframes addVocab {
+			0% { transform: scale(0) rotate(180deg); opacity: 0; }
+			50% { transform: scale(1.1) rotate(90deg); opacity: 0.8; }
+			100% { transform: scale(1) rotate(0deg); opacity: 1; }
+		}
+	</style>
+</head>
+<body>
+	<div class="floating-elements"></div>
+	
+	<div class="container">
+		<header>
+			<h1>📚 Vocab Trainer</h1>
+			<div class="stats">
+				<div class="card">Vocab Points: <strong id="vocabPoints">0</strong></div>
+				<div class="card">Debt: <strong id="debt">0</strong></div>
+				<div class="card muted" id="lastDecay">Last checked: -</div>
+				<div class="card" style="cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" onclick="window.location.href='/index.html'">
+					🗺️ Back to Mindmap
+				</div>
+			</div>
+		</header>
+
+		<section id="quizRedirect" class="quiz-redirect" style="display: none;">
+			<h2>🎯 You have vocabulary to review!</h2>
+			<p class="muted">Complete your daily review before adding new vocabulary</p>
+			<a href="quiz.html" class="quiz-link">Start Quiz →</a>
+		</section>
+
+		<section class="section">
+			<h2>📝 Add New Vocabulary</h2>
+			<label class="label">Word</label>
+			<input id="inputWord" type="text" placeholder="e.g. abate" />
+			<label class="label">Definition</label>
+			<textarea id="inputDef" rows="3" placeholder="Enter the definition here..."></textarea>
+			<div class="button-group">
+				<button id="addBtn" class="primary">✨ Add Vocabulary</button>
+				<button id="clearBtn" class="secondary">🗑️ Clear</button>
+			</div>
+		</section>
+
+		<section class="section">
+			<h3>📅 Today's Added Vocabulary</h3>
+			<div class="button-group">
+				<button id="processUnmarkedBtn" class="success" style="display: none;">
+					🔄 Process Unmarked Vocabulary (<span id="unprocessedCount">0</span>)
+				</button>
+			</div>
+			<table id="todayList">
+				<thead>
+					<tr>
+						<th>Word</th>
+						<th>Definition</th>
+						<th>Status</th>
+						<th>Actions</th>
+					</tr>
+				</thead>
+				<tbody></tbody>
+			</table>
+		</section>
+
+		<section class="section">
+			<h2>📚 All Vocabulary</h2>
+			<table id="allList">
+				<thead>
+					<tr>
+						<th>Word</th>
+						<th>Definition</th>
+						<th>Date Added</th>
+						<th>Reviews</th>
+						<th>Actions</th>
+					</tr>
+				</thead>
+				<tbody></tbody>
+			</table>
+		</section>
+	</div>
+
+	<script>
+		// Enhanced vocab trainer with new logic for vocab point system and date distribution
+		
+		function todayStr(d = new Date()){ return d.toISOString().slice(0,10); }
+
+		function daysBetween(aStr, bStr){
+			const a = new Date(aStr+'T00:00:00');
+			const b = new Date(bStr+'T00:00:00');
+			const ms = b - a;
+			return Math.floor(ms / (1000*60*60*24));
+		}
+
+		async function apiGetState(){
+			const res = await fetch('/api/state');
+			if(!res.ok) throw new Error('Failed to load state');
+			return res.json();
+		}
+		
+		async function apiPutState(st){
+			await fetch('/api/state', { method:'PUT', headers:{'content-type':'application/json'}, body: JSON.stringify(st) });
+		}
+
+		let state = { 
+			items: [], 
+			vocabPoints: 0, // renamed from counter
+			debt: 0, 
+			lastDecay: todayStr(), 
+			createdAt: todayStr(),
+			unprocessedVocab: [] // new field for tracking unprocessed vocab
+		};
+
+		// Apply daily decay and distribute vocabulary
+		async function applyDecay(){
+			const now = todayStr();
+			const last = state.lastDecay || now;
+			const days = daysBetween(last, now);
+			if(days <= 0) return;
+			
+			// For each day that passed, deduct 5 vocab points and distribute 5 oldest unprocessed vocab
+			for(let i = 0; i < days; i++){
+				const targetDate = new Date(last);
+				targetDate.setDate(targetDate.getDate() + i + 1);
+				const dateStr = targetDate.toISOString().slice(0,10);
+				
+				// Deduct vocab points
+				if(state.vocabPoints >= 5){
+					state.vocabPoints -= 5;
+				} else {
+					const remain = 5 - state.vocabPoints;
+					state.vocabPoints = 0;
+					state.debt = (state.debt || 0) + remain;
+				}
+				
+				// Distribute 5 oldest unprocessed vocab to this date
+				const unprocessed = getUnprocessedVocab();
+				const toDistribute = unprocessed.slice(0, 5);
+				toDistribute.forEach(item => {
+					item.dateAdded = dateStr;
+					item.processed = true;
+				});
+			}
+			
+			state.lastDecay = now;
+			await apiPutState(state);
+		}
+
+		function getUnprocessedVocab(){
+			return state.items.filter(item => !item.processed).sort((a, b) => a.id - b.id);
+		}
+
+		async function addVocab(word, def){
+			const item = { 
+				id: Date.now(), 
+				word: word.trim(), 
+				def: def.trim(), 
+				dateAdded: todayStr(), 
+				reviews: [],
+				processed: false // new field
+			};
+			state.items.push(item);
+			state.vocabPoints = (state.vocabPoints || 0) + 1;
+			await apiPutState(state);
+			
+			// Add animation
+			const addSection = document.querySelector('.section');
+			addSection.classList.add('add-animation');
+			setTimeout(() => addSection.classList.remove('add-animation'), 500);
+			
+			renderAll();
+			checkQuizRedirect();
+		}
+
+		async function processUnmarkedVocab(){
+			const unprocessed = getUnprocessedVocab();
+			const today = todayStr();
+			
+			// Mark unprocessed vocab as processed and set date to today
+			unprocessed.forEach(item => {
+				item.dateAdded = today;
+				item.processed = true;
+			});
+			
+			// Deduct vocab points equal to number of processed items
+			state.vocabPoints = Math.max(0, state.vocabPoints - unprocessed.length);
+			
+			await apiPutState(state);
+			renderAll();
+		}
+
+		function getDueItems(){
+			const dueDays = [1,2,5,8];
+			const now = todayStr();
+			return state.items.filter(it => {
+				if(!it.processed) return false; // only processed items can be due
+				const days = daysBetween(it.dateAdded, now);
+				if(!dueDays.includes(days)) return false;
+				return !it.reviews.includes(now);
+			});
+		}
+
+		function checkQuizRedirect(){
+			const due = getDueItems();
+			const quizRedirect = document.getElementById('quizRedirect');
+			if(due.length > 0){
+				quizRedirect.style.display = 'block';
+				// Auto redirect after 2 seconds if user doesn't interact
+				setTimeout(() => {
+					if(getDueItems().length > 0){
+						window.location.href = 'quiz.html';
+					}
+				}, 2000);
+			} else {
+				quizRedirect.style.display = 'none';
+			}
+		}
+
+		function escapeHtml(s){ return (s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+		function renderAll(){
+			// Update stats
+			document.getElementById('vocabPoints').textContent = state.vocabPoints || 0;
+			document.getElementById('debt').textContent = state.debt || 0;
+			document.getElementById('lastDecay').textContent = 'Last checked: ' + (state.lastDecay || todayStr());
+
+			// Render all vocabulary table
+			const tbody = document.querySelector('#allList tbody'); 
+			tbody.innerHTML='';
+			state.items.slice().reverse().forEach(it => {
+				const tr = document.createElement('tr');
+				const status = it.processed ? '✅ Processed' : '⏳ Unprocessed';
+				tr.innerHTML = `
+					<td>${escapeHtml(it.word)}</td>
+					<td>${escapeHtml(it.def)}</td>
+					<td>${it.dateAdded}</td>
+					<td>${(it.reviews||[]).join(', ') || '-'}</td>
+					<td><button class="danger" onclick="deleteVocab(${it.id})">Delete</button></td>
+				`;
+				tbody.appendChild(tr);
+			});
+
+			// Render today's vocabulary
+			const tbToday = document.querySelector('#todayList tbody'); 
+			tbToday.innerHTML='';
+			const today = todayStr();
+			const todayItems = state.items.filter(it => {
+				// Show items added today OR unprocessed items
+				return it.dateAdded === today || !it.processed;
+			});
+			
+			todayItems.forEach(it=>{
+				const tr = document.createElement('tr');
+				const status = it.processed ? '✅ Processed' : '⏳ Unprocessed';
+				tr.innerHTML = `
+					<td>${escapeHtml(it.word)}</td>
+					<td>${escapeHtml(it.def)}</td>
+					<td>${status}</td>
+					<td><button class="danger" onclick="deleteVocab(${it.id})">Delete</button></td>
+				`;
+				tbody.appendChild(tr);
+			});
+
+			// Update unprocessed count and button
+			const unprocessedCount = getUnprocessedVocab().length;
+			document.getElementById('unprocessedCount').textContent = unprocessedCount;
+			const processBtn = document.getElementById('processUnmarkedBtn');
+			if(unprocessedCount > 0){
+				processBtn.style.display = 'inline-block';
+			} else {
+				processBtn.style.display = 'none';
+			}
+		}
+
+		async function deleteVocab(id){
+			const item = state.items.find(it => it.id === id);
+			if(item && !item.processed){
+				// If deleting unprocessed vocab, also reduce vocab points
+				state.vocabPoints = Math.max(0, state.vocabPoints - 1);
+			}
+			state.items = state.items.filter(x => x.id !== id);
+			await apiPutState(state);
+			renderAll();
+			checkQuizRedirect();
+		}
+
+		function createFloatingElements(){
+			const container = document.querySelector('.floating-elements');
+			const symbols = ['📚', '✨', '🌟', '📖', '💡', '🎯'];
+			
+			for(let i = 0; i < 15; i++){
+				const element = document.createElement('div');
+				element.classList.add('floating-element');
+				element.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+				element.style.left = Math.random() * 100 + '%';
+				element.style.top = Math.random() * 100 + '%';
+				element.style.fontSize = (Math.random() * 20 + 15) + 'px';
+				element.style.animationDelay = Math.random() * 8 + 's';
+				element.style.animationDuration = (Math.random() * 4 + 4) + 's';
+				container.appendChild(element);
+			}
+		}
+
+		// Event listeners
+		document.getElementById('addBtn').addEventListener('click', async ()=>{
+			const w = document.getElementById('inputWord').value;
+			const d = document.getElementById('inputDef').value;
+			if(!w.trim() || !d.trim()){ 
+				alert('Please provide both word and definition'); 
+				return; 
+			}
+			await addVocab(w,d);
+			document.getElementById('inputWord').value=''; 
+			document.getElementById('inputDef').value='';
+		});
+
+		document.getElementById('clearBtn').addEventListener('click', ()=>{ 
+			document.getElementById('inputWord').value=''; 
+			document.getElementById('inputDef').value=''; 
+		});
+
+		document.getElementById('processUnmarkedBtn').addEventListener('click', async ()=>{
+			if(confirm('This will process all unmarked vocabulary and deduct vocab points. Continue?')){
+				await processUnmarkedVocab();
+			}
+		});
+
+		// Enter key support for input
+		document.getElementById('inputWord').addEventListener('keypress', (e) => {
+			if(e.key === 'Enter') document.getElementById('inputDef').focus();
+		});
+
+		document.getElementById('inputDef').addEventListener('keypress', (e) => {
+			if(e.key === 'Enter' && e.ctrlKey) document.getElementById('addBtn').click();
+		});
+
+		// Initialization
+		(async function init(){
+			try {
+				state = await apiGetState();
+				// Ensure new fields exist
+				if(!state.vocabPoints && state.counter !== undefined){
+					state.vocabPoints = state.counter; // migrate old counter to vocabPoints
+					delete state.counter;
+				}
+				if(!state.unprocessedVocab) state.unprocessedVocab = [];
+				
+				// Ensure all items have processed field
+				state.items.forEach(item => {
+					if(item.processed === undefined){
+						item.processed = true; // existing items are considered processed
+					}
+				});
+				
+				await applyDecay();
+			} catch (e) {
+				console.error(e);
+			}
+			renderAll();
+			checkQuizRedirect();
+			createFloatingElements();
+			window.vocabState = state; // expose for debugging
+		})();
+
+		// Make deleteVocab globally accessible
+		window.deleteVocab = deleteVocab;
+	</script>
+</body>
+</html>

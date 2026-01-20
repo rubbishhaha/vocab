@@ -358,6 +358,10 @@
         <h4>控制面板</h4>
         
         <div class="control-panel-section">
+            <button onclick="window.open('/vocab.html', '_blank')" title="開啟單字訓練器" style="background: #FF5722;">📚 Vocab</button>
+        </div>
+        
+        <div class="control-panel-section">
             <button onclick="btnAddNode()" title="新增節點">➕ 新增</button>
             <button class="btn-edit" onclick="btnEditNode()" title="編輯選中節點">✏️ 編輯</button>
             <button class="btn-delete" onclick="btnDeleteNode()" title="刪除節點">🗑️ 刪除</button>
@@ -458,6 +462,7 @@
                     tree: serializeNode(rootNode),
                     currentCenterId: currentCenterNode.id,
                     viewOffset: viewOffset,
+                    deletedNodes: Array.from(deletedNodes),
                     timestamp: new Date().toISOString()
                 };
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -564,8 +569,31 @@
             }
             return null;
         }
+        
+        // Record node deletion (including all children)
+        function recordNodeDeletion(node) {
+            const timestamp = new Date().toISOString();
+            deletedNodes.add(JSON.stringify({ id: node.id, timestamp }));
+            
+            // Record all children as deleted too
+            Object.values(node.children).forEach(child => {
+                recordNodeDeletion(child);
+            });
+        }
+        
+        // Check if a node was deleted
+        function wasNodeDeleted(nodeId) {
+            for (let record of deletedNodes) {
+                const parsed = JSON.parse(record);
+                if (parsed.id === nodeId) return true;
+            }
+            return false;
+        }
+        
         // 初始化根節點
         let rootNode;
+        let currentCenterNode;
+        let deletedNodes = new Set(); // 已刪除節點的記錄 {id, timestamp}
         
         // Load from cloud and local, then merge
         async function initializeData() {
@@ -601,6 +629,7 @@
             
             if (finalData && finalData.tree) {
                 rootNode = deserializeNode(finalData.tree);
+                currentCenterNode = rootNode;
                 if (finalData.currentCenterId) {
                     const foundNode = findNodeById(rootNode, finalData.currentCenterId);
                     if (foundNode) currentCenterNode = foundNode;
@@ -608,18 +637,35 @@
                 if (finalData.viewOffset) {
                     viewOffset = finalData.viewOffset;
                 }
+                if (finalData.deletedNodes) {
+                    deletedNodes = new Set(finalData.deletedNodes);
+                }
             } else {
                 // First time use, create default main node
                 rootNode = new MindMapNode('main', '#ff6b6b', null);
+                currentCenterNode = rootNode;
                 setTimeout(() => saveToLocalStorage(), 100);
             }
             
             draw();
         }
         
-        initializeData();
-        
-        let currentCenterNode = rootNode;
+        // Start initialization (async, don't block)
+        initializeData().then(() => {
+            // Setup event listeners after initialization
+            window.addEventListener('resize', resize);
+            resize();
+            saveHistory();
+        }).catch(err => {
+            console.error('Initialization error:', err);
+            // Fallback: create default node
+            rootNode = new MindMapNode('main', '#ff6b6b', null);
+            currentCenterNode = rootNode;
+            // Setup event listeners even on error
+            window.addEventListener('resize', resize);
+            resize();
+            saveHistory();
+        });
         
         let selectedNodes = new Set(); // 框選的節點
         let actualSelectedNodes = new Set(); // 實際選中的節點（考慮分支邏輯）
@@ -662,6 +708,11 @@
 
         // 繪製函數
         function draw() {
+            // Guard: don't draw if not initialized yet
+            if (!currentCenterNode || !rootNode) {
+                return;
+            }
+            
             ctx.clearRect(0, 0, width, height);
             nodePositions.clear();
 
@@ -1213,14 +1264,46 @@
             nameInput.focus();
         }
 
-        function finishAddNode() {
+        async function finishAddNode() {
             const panel = document.getElementById('inputPanel');
-            const name = document.getElementById('nodeNameInput').value.trim();
+            let name = document.getElementById('nodeNameInput').value.trim();
             const color = document.getElementById('nodeColorInput').value;
+            
+            console.log('finishAddNode called with name:', name);
             
             if (!name) {
                 alert('請輸入節點名稱');
                 return;
+            }
+
+            // Check for vvv trigger pattern: vvvWORD/DEFINITION
+            if (name.startsWith('vvv')) {
+                console.log('vvv detected!');
+                const content = name.substring(3); // Remove 'vvv'
+                const slashIndex = content.indexOf('/');
+                
+                console.log('content:', content, 'slashIndex:', slashIndex);
+                
+                if (slashIndex !== -1) {
+                    const word = content.substring(0, slashIndex).trim();
+                    const definition = content.substring(slashIndex + 1).trim();
+                    
+                    console.log('word:', word, 'definition:', definition);
+                    
+                    if (word && definition) {
+                        // Add to vocab
+                        console.log('Adding to vocab...');
+                        await addToVocab(word, definition);
+                        // Update node name to just the word (without vvv)
+                        name = word;
+                        console.log(`✅ Added to vocab: ${word} - ${definition}`);
+                        alert(`✅ Added "${word}" to vocab!`);
+                    }
+                } else {
+                    // If no slash found, just remove vvv prefix
+                    console.log('No slash found, just removing vvv');
+                    name = content;
+                }
             }
 
             const targetNodes = selectedNodes.size > 0 ? 
@@ -1241,6 +1324,45 @@
             selectedNodes.clear();
             actualSelectedNodes.clear();
             draw();
+        }
+
+        async function addToVocab(word, def) {
+            try {
+                // Get current vocab state
+                const res = await fetch('/api/state');
+                let state;
+                if (res.ok) {
+                    state = await res.json();
+                } else {
+                    const now = todayStr();
+                    state = { items: [], counter: 0, debt: 0, lastDecay: now, createdAt: now };
+                }
+                
+                // Add new item
+                const item = { 
+                    id: Date.now(), 
+                    word: word, 
+                    def: def, 
+                    dateAdded: todayStr(), 
+                    reviews: [],
+                    processed: false
+                };
+                state.items.push(item);
+                state.vocabPoints = (state.vocabPoints || 0) + 1;
+                
+                // Save back
+                await fetch('/api/state', {
+                    method: 'PUT',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify(state)
+                });
+            } catch (e) {
+                console.error('Failed to add to vocab:', e);
+            }
+        }
+        
+        function todayStr(d = new Date()) {
+            return d.toISOString().slice(0, 10);
         }
 
         function cancelAddNode() {
@@ -1275,6 +1397,9 @@
                 }).filter(n => n) : [currentCenterNode];
 
             targetNodes.forEach(node => {
+                // Record deletion with timestamp
+                recordNodeDeletion(node);
+                
                 if (node.parent) {
                     node.parent.removeChild(node.id);
                     if (node === currentCenterNode && node.parent) {
@@ -1282,6 +1407,9 @@
                     }
                 } else if (node === rootNode) {
                     // 清空根節點的子節點
+                    Object.values(node.children).forEach(child => {
+                        recordNodeDeletion(child);
+                    });
                     node.children = {};
                 }
             });
@@ -1403,10 +1531,7 @@
             }
         }
 
-        // 初始化
-        window.addEventListener('resize', resize);
-        resize();
-        saveHistory();
+        // 初始化 - moved to after initializeData() completes
 
         // 編輯面板相關函數
         let editingNodes = [];
