@@ -364,6 +364,10 @@
 
         .control-panel .btn-view { background: #607D8B; }
         .control-panel .btn-view:hover { background: #455a64; }
+        .control-panel .btn-view.active { 
+            background: #4CAF50;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
 
         .control-panel-section {
             border-top: 1px solid #eee;
@@ -466,10 +470,10 @@
         </div>
         
         <div class="control-panel-section">
-            <button class="btn-view" onclick="btnMoveView('up')" title="向上移動視野">⬆️ 上</button>
-            <button class="btn-view" onclick="btnMoveView('down')" title="向下移動視野">⬇️ 下</button>
-            <button class="btn-view" onclick="btnMoveView('left')" title="向左移動視野">⬅️ 左</button>
-            <button class="btn-view" onclick="btnMoveView('right')" title="向右移動視野">➡️ 右</button>
+            <button class="btn-view" id="btnMoveUp" onclick="toggleBtnMoveView('up')" title="向上移動視野">⬆️ 上</button>
+            <button class="btn-view" id="btnMoveDown" onclick="toggleBtnMoveView('down')" title="向下移動視野">⬇️ 下</button>
+            <button class="btn-view" id="btnMoveLeft" onclick="toggleBtnMoveView('left')" title="向左移動視野">⬅️ 左</button>
+            <button class="btn-view" id="btnMoveRight" onclick="toggleBtnMoveView('right')" title="向右移動視野">➡️ 右</button>
         </div>
     </div>
 
@@ -766,6 +770,25 @@
         let isTreeViewMode = false; // Tree view mode toggle
         let treeZoomLevel = 1.0; // Tree view zoom level (0.5 to 2.0)
         
+        // WASD 按鍵狀態追蹤
+        let keysPressed = {
+            w: false,
+            a: false,
+            s: false,
+            d: false
+        };
+        let viewMoveAnimationId = null;
+        
+        // 按鈕移動狀態
+        let btnMoveDirection = null;
+        let btnMoveAnimationId = null;
+        
+        // 加速系統
+        let currentMoveSpeed = 0; // 當前移動速度
+        let moveAcceleration = 0.3; // 加速度
+        let maxMoveSpeed = 20; // 最大速度
+        let minMoveSpeed = 2; // 最小速度
+        
         // 拖動節點相關
         let isDraggingNode = false;
         let draggedNode = null;
@@ -787,6 +810,147 @@
         
         function getLayerColor(depth) {
             return layerColors[depth % layerColors.length];
+        }
+
+        // 流畅的視野移動動畫循環（支持加速）
+        function startViewMoveAnimation() {
+            if (viewMoveAnimationId) return; // 已經在執行中
+            
+            // 重置速度為最小速度
+            currentMoveSpeed = minMoveSpeed;
+            
+            function animate() {
+                let moved = false;
+                
+                // 根據縮放級別調整速度倍率
+                const speedMultiplier = isTreeViewMode ? (1 / treeZoomLevel) : 1;
+                const speed = currentMoveSpeed * speedMultiplier;
+                
+                if (keysPressed.w) {
+                    viewOffset.y += speed;
+                    moved = true;
+                }
+                if (keysPressed.s) {
+                    viewOffset.y -= speed;
+                    moved = true;
+                }
+                if (keysPressed.a) {
+                    viewOffset.x += speed;
+                    moved = true;
+                }
+                if (keysPressed.d) {
+                    viewOffset.x -= speed;
+                    moved = true;
+                }
+                
+                if (moved) {
+                    // 加速：每幀增加速度直到達到最大速度
+                    currentMoveSpeed = Math.min(currentMoveSpeed + moveAcceleration, maxMoveSpeed);
+                    draw();
+                }
+                
+                // 如果還有按鍵被按下，繼續動畫
+                if (keysPressed.w || keysPressed.s || keysPressed.a || keysPressed.d) {
+                    viewMoveAnimationId = requestAnimationFrame(animate);
+                } else {
+                    viewMoveAnimationId = null;
+                    currentMoveSpeed = 0; // 停止時重置速度
+                    // 停止移動時保存
+                    saveToLocalStorage();
+                }
+            }
+            
+            viewMoveAnimationId = requestAnimationFrame(animate);
+        }
+        
+        function stopViewMoveAnimation() {
+            if (viewMoveAnimationId) {
+                cancelAnimationFrame(viewMoveAnimationId);
+                viewMoveAnimationId = null;
+                currentMoveSpeed = 0; // 重置速度
+            }
+        }
+        
+        // 按鈕移動動畫循環（切換模式）
+        function toggleBtnMoveView(direction) {
+            // 如果點擊當前正在移動的方向，則停止
+            if (btnMoveDirection === direction) {
+                stopBtnMoveView();
+                return;
+            }
+            
+            // 切換到新方向
+            btnMoveDirection = direction;
+            
+            // 更新按鈕視覺狀態
+            updateMoveButtonStyles();
+            
+            // 如果動畫已在運行，不需要重新啟動
+            if (btnMoveAnimationId) return;
+            
+            // 重置速度為最小速度
+            currentMoveSpeed = minMoveSpeed;
+            
+            function animate() {
+                if (!btnMoveDirection) {
+                    btnMoveAnimationId = null;
+                    currentMoveSpeed = 0; // 重置速度
+                    saveToLocalStorage();
+                    return;
+                }
+                
+                // 根據縮放級別調整速度倍率
+                const speedMultiplier = isTreeViewMode ? (1 / treeZoomLevel) : 1;
+                const speed = currentMoveSpeed * speedMultiplier;
+                
+                switch(btnMoveDirection) {
+                    case 'up':
+                        viewOffset.y += speed;
+                        break;
+                    case 'down':
+                        viewOffset.y -= speed;
+                        break;
+                    case 'left':
+                        viewOffset.x += speed;
+                        break;
+                    case 'right':
+                        viewOffset.x -= speed;
+                        break;
+                }
+                
+                // 加速：每幀增加速度直到達到最大速度
+                currentMoveSpeed = Math.min(currentMoveSpeed + moveAcceleration, maxMoveSpeed);
+                
+                draw();
+                btnMoveAnimationId = requestAnimationFrame(animate);
+            }
+            
+            btnMoveAnimationId = requestAnimationFrame(animate);
+        }
+        
+        function stopBtnMoveView() {
+            btnMoveDirection = null;
+            if (btnMoveAnimationId) {
+                cancelAnimationFrame(btnMoveAnimationId);
+                btnMoveAnimationId = null;
+                currentMoveSpeed = 0; // 重置速度
+                saveToLocalStorage();
+            }
+            updateMoveButtonStyles();
+        }
+        
+        function updateMoveButtonStyles() {
+            // 移除所有按鈕的 active 樣式
+            document.getElementById('btnMoveUp')?.classList.remove('active');
+            document.getElementById('btnMoveDown')?.classList.remove('active');
+            document.getElementById('btnMoveLeft')?.classList.remove('active');
+            document.getElementById('btnMoveRight')?.classList.remove('active');
+            
+            // 為當前方向的按鈕添加 active 樣式
+            if (btnMoveDirection) {
+                const btnId = 'btnMove' + btnMoveDirection.charAt(0).toUpperCase() + btnMoveDirection.slice(1);
+                document.getElementById(btnId)?.classList.add('active');
+            }
         }
 
         function resize() {
@@ -1462,29 +1626,38 @@
             const editingDisabled = isTreeViewMode;
             
             // WASD - 移動視野（在所有模式下都允許）
-            if (e.code === 'KeyW') {
+            // 使用按鍵狀態追蹤以實現流畅移動
+            if (e.code === 'KeyW' && !isInputFocused) {
                 e.preventDefault();
-                viewOffset.y += 30;
-                saveToLocalStorage();
-                draw();
+                if (!keysPressed.w) {
+                    keysPressed.w = true;
+                    startViewMoveAnimation();
+                }
+                return;
             }
-            else if (e.code === 'KeyS') {
+            else if (e.code === 'KeyS' && !isInputFocused) {
                 e.preventDefault();
-                viewOffset.y -= 30;
-                saveToLocalStorage();
-                draw();
+                if (!keysPressed.s) {
+                    keysPressed.s = true;
+                    startViewMoveAnimation();
+                }
+                return;
             }
-            else if (e.code === 'KeyA') {
+            else if (e.code === 'KeyA' && !isInputFocused) {
                 e.preventDefault();
-                viewOffset.x += 30;
-                saveToLocalStorage();
-                draw();
+                if (!keysPressed.a) {
+                    keysPressed.a = true;
+                    startViewMoveAnimation();
+                }
+                return;
             }
-            else if (e.code === 'KeyD') {
+            else if (e.code === 'KeyD' && !isInputFocused) {
                 e.preventDefault();
-                viewOffset.x -= 30;
-                saveToLocalStorage();
-                draw();
+                if (!keysPressed.d) {
+                    keysPressed.d = true;
+                    startViewMoveAnimation();
+                }
+                return;
             }
             
             // 以下編輯功能在樹狀視圖模式下禁用
@@ -1526,6 +1699,22 @@
             else if (e.code === 'KeyZ' && e.ctrlKey) {
                 e.preventDefault();
                 undo();
+            }
+        });
+
+        // 按鍵釋放事件
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyW') {
+                keysPressed.w = false;
+            }
+            else if (e.code === 'KeyS') {
+                keysPressed.s = false;
+            }
+            else if (e.code === 'KeyA') {
+                keysPressed.a = false;
+            }
+            else if (e.code === 'KeyD') {
+                keysPressed.d = false;
             }
         });
 
@@ -2042,6 +2231,8 @@
             }
         }
 
+        // 舊的按鈕移動函數（保留以防相容性問題）
+        // 現在使用 startBtnMoveView/stopBtnMoveView 以支持持續移動
         function btnMoveView(direction) {
             const step = 30;
             switch(direction) {
