@@ -23,6 +23,83 @@
             user-select: none;
         }
 
+        .tree-view-toggle {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 900;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .tree-view-toggle:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .tree-view-toggle.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: rgba(76, 175, 80, 0.5);
+        }
+
+        .tree-zoom-controls {
+            position: fixed;
+            top: 70px;
+            left: 20px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 900;
+        }
+
+        .tree-zoom-controls.active {
+            display: flex;
+        }
+
+        .tree-zoom-btn {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .tree-zoom-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.1);
+        }
+
+        .tree-zoom-label {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
         .input-panel {
             position: fixed;
             top: 50%;
@@ -319,6 +396,16 @@
     </style>
 </head>
 <body>
+    <button class="tree-view-toggle" id="treeViewToggle" onclick="toggleTreeView()">
+        🌳 樹狀視圖
+    </button>
+    
+    <div class="tree-zoom-controls" id="treeZoomControls">
+        <button class="tree-zoom-btn" onclick="zoomTreeIn()" title="放大">+</button>
+        <div class="tree-zoom-label" id="zoomLabel">100%</div>
+        <button class="tree-zoom-btn" onclick="zoomTreeOut()" title="縮小">−</button>
+    </div>
+    
     <canvas id="canvas"></canvas>
     
     <div class="input-panel" id="inputPanel">
@@ -676,6 +763,8 @@
         let hoveredNode = null;
         let viewOffset = { x: 0, y: 0 };
         let isPanelOpen = false; // 追蹤面板是否開啟
+        let isTreeViewMode = false; // Tree view mode toggle
+        let treeZoomLevel = 1.0; // Tree view zoom level (0.5 to 2.0)
         
         // 拖動節點相關
         let isDraggingNode = false;
@@ -716,17 +805,21 @@
             ctx.clearRect(0, 0, width, height);
             nodePositions.clear();
 
-            // 繪製中心節點
-            const centerX = width / 2 + viewOffset.x;
-            const centerY = height / 2 + viewOffset.y;
-            const centerDepth = currentCenterNode.getDepth();
+            if (isTreeViewMode) {
+                drawTreeView();
+            } else {
+                // 繪製中心節點
+                const centerX = width / 2 + viewOffset.x;
+                const centerY = height / 2 + viewOffset.y;
+                const centerDepth = currentCenterNode.getDepth();
 
-            // 先繪製所有連線（在底層）
-            drawConnectionsOnly(currentCenterNode, centerX, centerY, centerDepth, 0, null);
-            
-            // 再繪製所有節點（在上層）
-            drawNode(centerX, centerY, currentCenterNode, centerDepth, true);
-            drawNodesOnly(currentCenterNode, centerX, centerY, centerDepth, 0, null);
+                // 先繪製所有連線（在底層）
+                drawConnectionsOnly(currentCenterNode, centerX, centerY, centerDepth, 0, null);
+                
+                // 再繪製所有節點（在上層）
+                drawNode(centerX, centerY, currentCenterNode, centerDepth, true);
+                drawNodesOnly(currentCenterNode, centerX, centerY, centerDepth, 0, null);
+            }
 
             // 繪製選擇框
             if (isDragging) {
@@ -743,6 +836,146 @@
             }
         }
 
+        // 樹狀視圖繪製函數
+        function drawTreeView() {
+            const baseDepth = currentCenterNode.getDepth();
+            
+            // 計算節點位置（使用列布局算法）
+            const nodeLayout = calculateTreeLayout(currentCenterNode);
+            
+            // 計算根節點位置以居中整個樹
+            const rootLayout = nodeLayout.get(currentCenterNode.id);
+            const verticalSpacing = 150;
+            const horizontalSpacing = 180;
+            
+            // 計算所有列的範圍
+            let minCol = Infinity, maxCol = -Infinity;
+            for (let [id, layout] of nodeLayout) {
+                minCol = Math.min(minCol, layout.col);
+                maxCol = Math.max(maxCol, layout.col);
+            }
+            
+            // 計算起始位置，使整個樹居中
+            const treeWidth = (maxCol - minCol) * horizontalSpacing;
+            const baseX = (width / 2) - (rootLayout.col * horizontalSpacing);
+            const baseY = 100;
+            
+            // 保存當前 canvas 狀態
+            ctx.save();
+            
+            // 應用縮放和偏移
+            // 先平移到畫布中心
+            ctx.translate(width / 2, height / 2);
+            // 應用縮放
+            ctx.scale(treeZoomLevel, treeZoomLevel);
+            // 應用用戶的視野偏移，並平移回去
+            ctx.translate(-width / 2 + viewOffset.x, -height / 2 + viewOffset.y);
+            
+            // 先繪製所有連線（使用正交線）
+            drawTreeConnectionsOrthogonal(currentCenterNode, baseX, baseY, baseDepth, nodeLayout);
+            
+            // 再繪製所有節點
+            drawTreeNodesWithLayout(currentCenterNode, baseX, baseY, baseDepth, nodeLayout);
+            
+            // 恢復 canvas 狀態
+            ctx.restore();
+        }
+
+        // 計算樹狀佈局（使用列布局，避免重疊）
+        function calculateTreeLayout(rootNode) {
+            const layout = new Map(); // node.id -> {col, row, subtreeWidth}
+            let nextCol = 0;
+            
+            function assignColumns(node, row) {
+                const children = Object.values(node.children);
+                
+                if (children.length === 0) {
+                    // 葉子節點：分配新列
+                    layout.set(node.id, { col: nextCol, row: row, subtreeWidth: 1 });
+                    nextCol++;
+                    return 1;
+                } else {
+                    // 非葉子節點：先處理所有子節點
+                    let subtreeWidth = 0;
+                    const childCols = [];
+                    children.forEach(child => {
+                        const childWidth = assignColumns(child, row + 1);
+                        childCols.push(layout.get(child.id).col);
+                        subtreeWidth += childWidth;
+                    });
+                    
+                    // 父節點位於子節點的中間列
+                    const leftmostCol = childCols[0];
+                    const rightmostCol = childCols[childCols.length - 1];
+                    const parentCol = (leftmostCol + rightmostCol) / 2;
+                    
+                    layout.set(node.id, { col: parentCol, row: row, subtreeWidth: subtreeWidth });
+                    return subtreeWidth;
+                }
+            }
+            
+            assignColumns(rootNode, 0);
+            return layout;
+        }
+
+        // 使用正交線繪製樹狀視圖的連線
+        function drawTreeConnectionsOrthogonal(node, baseX, baseY, baseDepth, layout) {
+            const children = Object.values(node.children);
+            if (children.length === 0) return;
+            
+            const verticalSpacing = 150;
+            const horizontalSpacing = 180;
+            
+            const nodeLayout = layout.get(node.id);
+            const nodeX = baseX + (nodeLayout.col * horizontalSpacing);
+            const nodeY = baseY + (nodeLayout.row * verticalSpacing);
+            
+            children.forEach(child => {
+                const childLayout = layout.get(child.id);
+                const childX = baseX + (childLayout.col * horizontalSpacing);
+                const childY = baseY + (childLayout.row * verticalSpacing);
+                
+                // 繪製正交連線：從父節點向下 -> 水平移動 -> 向下到子節點
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                
+                // 從父節點底部向下
+                const midY = (nodeY + childY) / 2;
+                ctx.moveTo(nodeX, nodeY);
+                ctx.lineTo(nodeX, midY);
+                
+                // 水平移動到子節點的 X 位置
+                ctx.lineTo(childX, midY);
+                
+                // 向下到子節點頂部
+                ctx.lineTo(childX, childY);
+                ctx.stroke();
+                
+                // 遞歸繪製子節點的連線
+                drawTreeConnectionsOrthogonal(child, baseX, baseY, baseDepth, layout);
+            });
+        }
+
+        // 使用佈局繪製樹狀視圖的節點
+        function drawTreeNodesWithLayout(node, baseX, baseY, baseDepth, layout) {
+            const nodeLayout = layout.get(node.id);
+            const verticalSpacing = 150;
+            const horizontalSpacing = 180;
+            
+            const x = baseX + (nodeLayout.col * horizontalSpacing);
+            const y = baseY + (nodeLayout.row * verticalSpacing);
+            
+            // 繪製節點
+            drawNode(x, y, node, baseDepth);
+            
+            // 遞歸繪製子節點
+            const children = Object.values(node.children);
+            children.forEach(child => {
+                drawTreeNodesWithLayout(child, baseX, baseY, baseDepth, layout);
+            });
+        }
+
         function drawNode(x, y, node, baseDepth, isCenter = false) {
             // 應用拖動偏移
             const offset = getNodeDragOffset(node.id);
@@ -754,7 +987,6 @@
             const radius = 8; // 圓角半徑
             const padding = 10;
             const lineHeight = 18;
-            const maxWidth = minSize - padding * 2;
             let color = node.color;
 
             // 懸停效果
@@ -767,16 +999,47 @@
                 ctx.globalAlpha = 0.7;
             }
 
-            // 計算文字換行
+            // 計算文字換行 - 為了讓區塊接近正方形，動態調整最大寬度
             ctx.font = isCenter ? 'bold 16px Arial' : '14px Arial';
-            const wrapResult = wrapText(node.name, maxWidth);
-            const lines = wrapResult.lines;
-            const actualMaxWidth = wrapResult.maxWidth;
+            const textMetrics = ctx.measureText(node.name);
+            const fullTextWidth = textMetrics.width;
             
-            // 計算實際方塊大小
-            const textHeight = lines.length * lineHeight;
-            const blockHeight = Math.max(minSize, textHeight + padding * 2);
-            const blockWidth = Math.max(minSize, actualMaxWidth + padding * 2);
+            // 嘗試不同的寬度，找到最接近正方形的佈局
+            let bestLayout = null;
+            let bestSquareness = Infinity;
+            
+            // 嘗試不同的行數（1到5行）
+            for (let targetLines = 1; targetLines <= 5; targetLines++) {
+                const targetWidth = fullTextWidth / targetLines;
+                const tryMaxWidth = Math.max(minSize - padding * 2, targetWidth);
+                const wrapResult = wrapText(node.name, tryMaxWidth);
+                
+                if (wrapResult.lines.length > 0) {
+                    const textHeight = wrapResult.lines.length * lineHeight;
+                    const blockHeight = Math.max(minSize, textHeight + padding * 2);
+                    const blockWidth = Math.max(minSize, wrapResult.maxWidth + padding * 2);
+                    
+                    // 計算正方形程度（越接近1越好）
+                    const aspectRatio = blockWidth / blockHeight;
+                    const squareness = Math.abs(1 - aspectRatio);
+                    
+                    if (squareness < bestSquareness) {
+                        bestSquareness = squareness;
+                        bestLayout = {
+                            lines: wrapResult.lines,
+                            maxWidth: wrapResult.maxWidth,
+                            blockWidth,
+                            blockHeight
+                        };
+                    }
+                }
+            }
+            
+            // 使用最佳佈局
+            const lines = bestLayout.lines;
+            const actualMaxWidth = bestLayout.maxWidth;
+            const blockHeight = bestLayout.blockHeight;
+            const blockWidth = bestLayout.blockWidth;
 
             // 繪製圓角方塊
             ctx.fillStyle = color;
@@ -976,6 +1239,7 @@
         // 滑鼠事件
         canvas.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return; // 只處理左鍵
+            if (isTreeViewMode) return; // 樹狀視圖模式下禁用編輯
             
             const node = getNodeAtPosition(e.clientX, e.clientY);
             dragNodeStartTime = Date.now();
@@ -1055,6 +1319,7 @@
 
         canvas.addEventListener('click', (e) => {
             if (isDragging || isDraggingNode) return;
+            if (isTreeViewMode) return; // 樹狀視圖模式下禁用點擊進入
             
             // 如果剛拖動完，等待 300ms 才允許點擊進入
             if (Date.now() - lastDragEndTime < 300) return;
@@ -1075,6 +1340,7 @@
                     currentCenterNode = node;
                     selectedNodes.clear();
                     actualSelectedNodes.clear();
+                    viewOffset = { x: 0, y: 0 }; // 重置視野至中心
                     saveHistory();
                     saveToLocalStorage();
                     draw();
@@ -1082,8 +1348,19 @@
             }
         });
 
+        // 滾輪縮放（樹狀視圖模式）
+        canvas.addEventListener('wheel', (e) => {
+            if (isTreeViewMode) {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                treeZoomLevel = Math.max(0.3, Math.min(2.5, treeZoomLevel + delta));
+                draw();
+            }
+        }, { passive: false });
+
         canvas.addEventListener('contextmenu', (e) => {
             e.preventDefault();
+            if (isTreeViewMode) return; // 樹狀視圖模式下禁用右鍵功能
             
             const node = getNodeAtPosition(e.clientX, e.clientY);
             
@@ -1106,6 +1383,7 @@
                 currentCenterNode = currentCenterNode.parent;
                 selectedNodes.clear();
                 actualSelectedNodes.clear();
+                viewOffset = { x: 0, y: 0 }; // 重置視野至中心
                 saveHistory();
                 saveToLocalStorage();
                 draw();
@@ -1180,7 +1458,10 @@
                 return;
             }
             
-            // WASD - 移動視野
+            // 樹狀視圖模式下只允許視野移動 (WASD)，禁用編輯功能
+            const editingDisabled = isTreeViewMode;
+            
+            // WASD - 移動視野（在所有模式下都允許）
             if (e.code === 'KeyW') {
                 e.preventDefault();
                 viewOffset.y += 30;
@@ -1204,6 +1485,11 @@
                 viewOffset.x -= 30;
                 saveToLocalStorage();
                 draw();
+            }
+            
+            // 以下編輯功能在樹狀視圖模式下禁用
+            else if (editingDisabled) {
+                return;
             }
             
             // Space - 新增節點
@@ -1404,6 +1690,7 @@
                     node.parent.removeChild(node.id);
                     if (node === currentCenterNode && node.parent) {
                         currentCenterNode = node.parent;
+                        viewOffset = { x: 0, y: 0 }; // 重置視野至中心
                     }
                 } else if (node === rootNode) {
                     // 清空根節點的子節點
@@ -1659,6 +1946,44 @@
         });
 
         // 控制面板按鈕函數
+        function toggleTreeView() {
+            isTreeViewMode = !isTreeViewMode;
+            const button = document.getElementById('treeViewToggle');
+            const zoomControls = document.getElementById('treeZoomControls');
+            
+            viewOffset = { x: 0, y: 0 }; // 重置視野至中心
+            
+            if (isTreeViewMode) {
+                button.classList.add('active');
+                button.textContent = '🌲 圓形視圖';
+                zoomControls.classList.add('active');
+                updateZoomLabel();
+            } else {
+                button.classList.remove('active');
+                button.textContent = '🌳 樹狀視圖';
+                zoomControls.classList.remove('active');
+            }
+            
+            draw();
+        }
+
+        function zoomTreeIn() {
+            treeZoomLevel = Math.min(2.5, treeZoomLevel + 0.1);
+            updateZoomLabel();
+            draw();
+        }
+
+        function zoomTreeOut() {
+            treeZoomLevel = Math.max(0.3, treeZoomLevel - 0.1);
+            updateZoomLabel();
+            draw();
+        }
+
+        function updateZoomLabel() {
+            const label = document.getElementById('zoomLabel');
+            label.textContent = Math.round(treeZoomLevel * 100) + '%';
+        }
+
         function btnAddNode() {
             openAddNodePanel();
         }
