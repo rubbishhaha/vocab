@@ -27,15 +27,17 @@ export default {
 			return new Response(null, { headers: corsHeaders });
 		}
 
-		// Vocab API routes
-		if (url.pathname === '/api/state') {
-			return handleVocabState(req, env, corsHeaders);
-		}
+		// Wrap all routes in try-catch for better error handling
+		try {
+			// Vocab API routes
+			if (url.pathname === '/api/state') {
+				return handleVocabState(req, env, corsHeaders);
+			}
 
-		// Mindmap API routes
-		if (url.pathname === '/api/sync') {
-			return handleSync(req, env, corsHeaders);
-		}
+			// Mindmap API routes
+			if (url.pathname === '/api/sync') {
+				return handleSync(req, env, corsHeaders);
+			}
 
 		// Redirect routes
 		if (url.pathname === '/' || url.pathname === '') {
@@ -64,6 +66,21 @@ export default {
 		}
 
 		return res;
+		} catch (error) {
+			// Global error handler
+			console.error('Unhandled error in fetch:', error);
+			return new Response(JSON.stringify({
+				error: 'Internal server error',
+				message: String(error),
+				stack: error instanceof Error ? error.stack : undefined
+			}), {
+				status: 500,
+				headers: {
+					'Access-Control-Allow-Origin': '*',
+					'Content-Type': 'application/json'
+				}
+			});
+		}
 	},
 
 	async scheduled(event: any, env: Env, ctx: any): Promise<void> {
@@ -225,19 +242,27 @@ function mergeNodes(newerNode: any, olderNode: any, deletedIds: Set<string>): an
 	
 	const merged = { ...newerNode };
 	
-	// Merge children
-	const newerChildren = newerNode.children || [];
-	const olderChildren = olderNode.children || [];
+	// Merge children - handle both array and object formats
+	const newerChildren = Array.isArray(newerNode.children) 
+		? newerNode.children 
+		: (newerNode.children ? Object.values(newerNode.children) : []);
+	const olderChildren = Array.isArray(olderNode.children)
+		? olderNode.children
+		: (olderNode.children ? Object.values(olderNode.children) : []);
 	
 	// Create a map of newer children by id
 	const newerChildMap = new Map();
 	newerChildren.forEach((child: any) => {
-		newerChildMap.set(child.id, child);
+		if (child && child.id) {
+			newerChildMap.set(child.id, child);
+		}
 	});
 	
 	// Add older children that don't exist in newer version
 	const mergedChildren = [...newerChildren];
 	olderChildren.forEach((oldChild: any) => {
+		if (!oldChild || !oldChild.id) return;
+		
 		// Skip deleted nodes
 		if (deletedIds.has(oldChild.id)) return;
 		
@@ -250,7 +275,7 @@ function mergeNodes(newerNode: any, olderNode: any, deletedIds: Set<string>): an
 			const mergedChild = mergeNodes(newerChild, oldChild, deletedIds);
 			// Replace the newer child with merged version if not null
 			if (mergedChild) {
-				const index = mergedChildren.findIndex((c: any) => c.id === oldChild.id);
+				const index = mergedChildren.findIndex((c: any) => c && c.id === oldChild.id);
 				if (index !== -1) {
 					mergedChildren[index] = mergedChild;
 				}

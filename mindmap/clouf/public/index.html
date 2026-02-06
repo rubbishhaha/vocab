@@ -536,6 +536,14 @@
         // localStorage 存取函數
         const STORAGE_KEY = 'mindmap_data';
         
+        // 雲端同步管理
+        let syncTimeout = null;
+        let lastSyncTime = 0;
+        const SYNC_DEBOUNCE_MS = 5000; // 5秒內的多次保存只同步一次
+        const MIN_SYNC_INTERVAL_MS = 30000; // 最少每30秒才同步一次
+        let pendingSyncData = null;
+        let kvLimitExceeded = false; // KV 限制是否已超過
+        
         // Listen for online/offline events
         window.addEventListener('online', () => {
             console.log('📡 Online - syncing...');
@@ -558,14 +566,52 @@
                 };
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
                 
-                // Sync to cloud if online
-                syncToCloud(data);
+                // 使用智能同步策略
+                scheduleSyncToCloud(data);
             } catch (e) {
                 console.error('Failed to save to localStorage:', e);
             }
         }
         
+        // 智能同步調度器（去抖動 + 限流）
+        function scheduleSyncToCloud(data) {
+            // 如果已超過 KV 限制，停止同步
+            if (kvLimitExceeded) {
+                console.log('⚠️ KV limit exceeded, skipping cloud sync');
+                return;
+            }
+            
+            // 保存待同步的數據
+            pendingSyncData = data;
+            
+            // 清除之前的定時器
+            if (syncTimeout) {
+                clearTimeout(syncTimeout);
+            }
+            
+            // 計算自上次同步以來的時間
+            const timeSinceLastSync = Date.now() - lastSyncTime;
+            
+            // 如果距離上次同步已超過最小間隔，使用短去抖動
+            // 否則使用長去抖動以減少同步頻率
+            const debounceTime = timeSinceLastSync > MIN_SYNC_INTERVAL_MS 
+                ? SYNC_DEBOUNCE_MS 
+                : MIN_SYNC_INTERVAL_MS - timeSinceLastSync + SYNC_DEBOUNCE_MS;
+            
+            syncTimeout = setTimeout(() => {
+                if (pendingSyncData) {
+                    syncToCloud(pendingSyncData);
+                    pendingSyncData = null;
+                }
+            }, debounceTime);
+        }
+        
         async function syncToCloud(localData) {
+            // 如果已超過 KV 限制，不再嘗試
+            if (kvLimitExceeded) {
+                return;
+            }
+            
             // Only sync if online
             if (!navigator.onLine) {
                 console.log('Offline, skipping cloud sync');
@@ -586,10 +632,32 @@
                     if (result.success && result.data) {
                         // Update local storage with merged data
                         localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data));
+                        lastSyncTime = Date.now();
                         console.log('✅ Synced to cloud');
+                    } else {
+                        // 檢查是否是 KV 限制錯誤
+                        if (result.error && result.error.includes('KV put() limit exceeded')) {
+                            kvLimitExceeded = true;
+                            console.warn('⚠️ KV daily limit exceeded. Cloud sync disabled until tomorrow.');
+                            console.log('💾 Your data is still saved locally and will sync when limit resets.');
+                        } else {
+                            console.error('Cloud sync failed:', result.error);
+                        }
                     }
                 } else {
-                    console.error('Cloud sync failed:', response.statusText);
+                    // Try to get error details
+                    try {
+                        const errorData = await response.json();
+                        if (errorData.error && errorData.error.includes('KV put() limit exceeded')) {
+                            kvLimitExceeded = true;
+                            console.warn('⚠️ KV daily limit exceeded. Cloud sync disabled until tomorrow.');
+                            console.log('💾 Your data is still saved locally and will sync when limit resets.');
+                        } else {
+                            console.error('Cloud sync failed:', errorData);
+                        }
+                    } catch {
+                        console.error('Cloud sync failed:', response.status, response.statusText);
+                    }
                 }
             } catch (e) {
                 console.error('Failed to sync to cloud:', e);

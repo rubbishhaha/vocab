@@ -358,9 +358,24 @@
 			const now = todayStr();
 			return items.filter(it => {
 				const daysSinceAdded = daysBetween(it.dateAdded, now);
-				if(!dueDays.includes(daysSinceAdded)) return false;
-				return !it.reviews.includes(now);
+				
+				// Allow compensation: check if current day is >= any due day
+				const isDueOrOverdue = dueDays.some(dueDay => {
+					if (daysSinceAdded < dueDay) return false;
+					
+					// Check if this specific due day was already reviewed
+					const scheduledDate = addDays(it.dateAdded, dueDay);
+					return !it.reviews.includes(scheduledDate) && daysSinceAdded >= dueDay;
+				});
+				
+				return isDueOrOverdue;
 			});
+		}
+
+		function addDays(dateStr, days) {
+			const date = new Date(dateStr + 'T00:00:00');
+			date.setDate(date.getDate() + days);
+			return date.toISOString().slice(0, 10);
 		}
 
 		function daysBetween(aStr, bStr){
@@ -429,7 +444,30 @@
 				}
 
 				const item = this.quizItems[this.currentIndex];
-				document.getElementById('questionText').textContent = item.def;
+				const today = todayStr();
+				const daysSinceAdded = daysBetween(item.dateAdded, today);
+				const dueDays = [1, 2, 5, 8];
+				
+				// Find which quiz day this is
+				let currentQuizDay = null;
+				let isCompensating = false;
+				for (const dueDay of dueDays) {
+					const scheduledDate = addDays(item.dateAdded, dueDay);
+					if (daysSinceAdded >= dueDay && !item.reviews.includes(scheduledDate)) {
+						currentQuizDay = dueDay;
+						isCompensating = daysSinceAdded > dueDay;
+						break;
+					}
+				}
+				
+				// Show compensation notice if applicable
+				let questionHTML = item.def;
+				if (isCompensating && currentQuizDay !== null) {
+					const daysLate = daysSinceAdded - currentQuizDay;
+					questionHTML = `<div style="background: rgba(255, 165, 0, 0.2); padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 0.85em; border: 1px solid rgba(255, 165, 0, 0.5);">⚠️ Compensation Quiz (${daysLate} day${daysLate > 1 ? 's' : ''} late)</div>${item.def}`;
+				}
+				
+				document.getElementById('questionText').innerHTML = questionHTML;
 				document.getElementById('answerText').textContent = item.word;
 				document.getElementById('answerInput').value = '';
 				document.getElementById('feedback').innerHTML = '';
@@ -463,10 +501,35 @@
 
 			async handleCorrectAnswer() {
 				const item = this.quizItems[this.currentIndex];
+				const today = todayStr();
+				const daysSinceAdded = daysBetween(item.dateAdded, today);
+				const dueDays = [1, 2, 5, 8];
 				
-				// Mark as reviewed
-				if (!item.reviews.includes(todayStr())) {
-					item.reviews.push(todayStr());
+				// Find which quiz day this is (the earliest due day that hasn't been reviewed)
+				let currentQuizDay = null;
+				for (const dueDay of dueDays) {
+					const scheduledDate = addDays(item.dateAdded, dueDay);
+					if (daysSinceAdded >= dueDay && !item.reviews.includes(scheduledDate)) {
+						currentQuizDay = dueDay;
+						break;
+					}
+				}
+				
+				if (currentQuizDay !== null) {
+					// Mark the scheduled date as reviewed
+					const scheduledDate = addDays(item.dateAdded, currentQuizDay);
+					if (!item.reviews.includes(scheduledDate)) {
+						item.reviews.push(scheduledDate);
+					}
+					
+					// If this is a compensated quiz (taken late), reset dateAdded to today
+					// so future reviews count from when the quiz was actually taken
+					if (daysSinceAdded > currentQuizDay) {
+						console.log(`Compensating quiz for "${item.word}": was due on day ${currentQuizDay}, taken on day ${daysSinceAdded}`);
+						item.dateAdded = today;
+						// Clear future reviews since we're resetting the timeline
+						item.reviews = [addDays(today, 0)]; // Mark today as the first review
+					}
 				}
 				
 				// Save state
