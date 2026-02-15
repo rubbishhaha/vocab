@@ -274,6 +274,9 @@
 				<div class="card">Vocab Points: <strong id="vocabPoints">0</strong></div>
 				<div class="card">Debt: <strong id="debt">0</strong></div>
 				<div class="card muted" id="lastDecay">Last checked: -</div>
+				<div class="card" style="cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" onclick="window.location.href='/index.html'">
+					🗺️ Back to Mindmap
+				</div>
 			</div>
 		</header>
 
@@ -364,6 +367,13 @@
 		};
 
 		// Apply daily decay and distribute vocabulary
+		// Helper function to add days to a date string
+		function addDays(dateStr, days){
+			const d = new Date(dateStr + 'T00:00:00');
+			d.setUTCDate(d.getUTCDate() + days);
+			return d.toISOString().slice(0,10);
+		}
+
 		async function applyDecay(){
 			const now = todayStr();
 			const last = state.lastDecay || now;
@@ -372,9 +382,7 @@
 			
 			// For each day that passed, deduct 5 vocab points and distribute 5 oldest unprocessed vocab
 			for(let i = 0; i < days; i++){
-				const targetDate = new Date(last);
-				targetDate.setDate(targetDate.getDate() + i + 1);
-				const dateStr = targetDate.toISOString().slice(0,10);
+				const dateStr = addDays(last, i + 1);
 				
 				// Deduct vocab points
 				if(state.vocabPoints >= 5){
@@ -442,27 +450,28 @@
 		}
 
 		function getDueItems(){
-			const dueDays = [1,2,5,8,14,21,30];
+			const dueDays = [1, 2, 5, 8]; // Match quiz.html schedule
 			const now = todayStr();
 			return state.items.filter(it => {
 				if(!it.processed) return false; // only processed items can be due
 				const days = daysBetween(it.dateAdded, now);
+				
+				// Check if this day is in the schedule
 				if(!dueDays.includes(days)) return false;
-				return !it.reviews.includes(now);
+				
+				// Check if already reviewed today
+				const reviews = it.reviews || [];
+				return !reviews.includes(now);
 			});
 		}
 
 		function checkQuizRedirect(){
 			const due = getDueItems();
 			const quizRedirect = document.getElementById('quizRedirect');
+			
 			if(due.length > 0){
 				quizRedirect.style.display = 'block';
-				// Auto redirect after 2 seconds if user doesn't interact
-				setTimeout(() => {
-					if(getDueItems().length > 0){
-						window.location.href = 'quiz.html';
-					}
-				}, 2000);
+				// No auto-redirect - user clicks manually to start quiz
 			} else {
 				quizRedirect.style.display = 'none';
 			}
