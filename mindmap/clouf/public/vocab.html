@@ -350,6 +350,9 @@
 
 		<section class="section">
 			<h2>📚 All Vocabulary</h2>
+			<div style="margin-bottom: 20px;">
+				<input id="searchInput" type="text" placeholder="🔍 Search by word or definition..." style="width: 100%; max-width: 500px;" />
+			</div>
 			<table id="allList">
 				<thead>
 					<tr>
@@ -383,6 +386,7 @@
 	<script>
 		let state = null;
 		let editingId = null;
+		let searchQuery = '';
 
 		// Helper functions
 		function todayStr(d = new Date()) {
@@ -547,6 +551,16 @@
 			editingId = null;
 		}
 
+		// Search filter function
+		function filterItems(items) {
+			if (!searchQuery.trim()) return items;
+			const query = searchQuery.toLowerCase();
+			return items.filter(item =>
+				item.word.toLowerCase().includes(query) ||
+				item.def.toLowerCase().includes(query)
+			);
+		}
+
 		// Render all tables
 		function renderAll() {
 			// Update stats
@@ -554,10 +568,11 @@
 			document.getElementById('debt').textContent = state.debt || 0;
 			document.getElementById('lastDecay').textContent = 'Last: ' + (state.lastDecay || todayStr());
 
-			// Render all vocabulary table
+			// Render all vocabulary table (with search filter)
 			const allTbody = document.querySelector('#allList tbody');
 			allTbody.innerHTML = '';
-			state.items.slice().reverse().forEach(item => {
+			const filteredItems = filterItems(state.items.slice().reverse());
+			filteredItems.forEach(item => {
 				const tr = document.createElement('tr');
 				tr.innerHTML = `
 					<td>${escapeHtml(item.word)}</td>
@@ -652,6 +667,12 @@
 		// Close modal on background click
 		document.getElementById('editModal').addEventListener('click', (e) => {
 			if (e.target === e.currentTarget) closeEditModal();
+		});
+
+		// Search functionality
+		document.getElementById('searchInput').addEventListener('input', (e) => {
+			searchQuery = e.target.value;
+			renderAll();
 		});
 
 		// Initialize
