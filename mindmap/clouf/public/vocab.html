@@ -292,6 +292,45 @@
 			gap: 10px;
 			margin-top: 20px;
 		}
+		
+		.vocab-pool {
+			position: relative;
+			width: 100%;
+			height: 400px;
+			background: linear-gradient(180deg, rgba(100, 200, 255, 0.3) 0%, rgba(50, 150, 255, 0.5) 100%);
+			border-radius: 20px;
+			overflow: hidden;
+			border: 3px solid rgba(255, 255, 255, 0.3);
+			box-shadow: inset 0 0 30px rgba(0, 150, 255, 0.3);
+		}
+		
+		.vocab-card {
+			position: absolute;
+			padding: 8px 12px;
+			background: rgba(255, 255, 255, 0.9);
+			border-radius: 8px;
+			box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+			font-size: 0.9rem;
+			font-weight: 600;
+			color: #667eea;
+			cursor: pointer;
+			transition: transform 0.2s, box-shadow 0.2s;
+			white-space: nowrap;
+			max-width: 150px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+		
+		.vocab-card:hover {
+			transform: scale(1.1);
+			box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
+			z-index: 100;
+		}
+		
+		@keyframes wave {
+			0%, 100% { transform: translateY(0px); }
+			50% { transform: translateY(-5px); }
+		}
 	</style>
 </head>
 <body>
@@ -301,9 +340,6 @@
 		<header>
 			<h1>📚 Vocab Trainer</h1>
 			<div class="stats">
-				<div class="card">Vocab Points: <strong id="vocabPoints">0</strong></div>
-				<div class="card">Debt: <strong id="debt">0</strong></div>
-				<div class="card" id="lastDecay">Last: -</div>
 				<div class="card" style="cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" onclick="window.location.href='index.html'">
 					🗺️ Back to Mindmap
 				</div>
@@ -330,11 +366,6 @@
 
 		<section class="section">
 			<h2>📅 Today's Added Vocabulary</h2>
-			<div class="button-group">
-				<button id="processUnmarkedBtn" class="btn-success" style="display: none;">
-					🔄 Process Unmarked (<span id="unprocessedCount">0</span>)
-				</button>
-			</div>
 			<table id="todayList">
 				<thead>
 					<tr>
@@ -365,6 +396,12 @@
 				</thead>
 				<tbody></tbody>
 			</table>
+		</section>
+
+		<section class="section" style="margin-top: 50px;">
+			<h2 style="text-align: center; font-size: 1.8rem; margin-bottom: 10px;">🌊 Vocab Pool</h2>
+			<p id="poolMessage" style="text-align: center; color: white; font-size: 1.2rem; margin-bottom: 20px;">You have stored 0 vocabs! Keep going! 🎉</p>
+			<div id="vocabPool" class="vocab-pool"></div>
 		</section>
 	</div>
 
@@ -424,21 +461,6 @@
 			});
 		}
 
-		// Daily decay system
-		async function applyDecay() {
-			const today = todayStr();
-			const lastDecay = state.lastDecay || today;
-			const daysDiff = daysBetween(lastDecay, today);
-
-			if (daysDiff > 0) {
-				const unprocessed = state.items.filter(it => !it.processed).length;
-				const decayAmount = unprocessed * daysDiff;
-				state.debt = (state.debt || 0) + decayAmount;
-				state.lastDecay = today;
-				await apiPutState(state);
-			}
-		}
-
 		// Get items that need quiz
 		function getDueItems() {
 			const dueDays = [1, 2, 5, 8];
@@ -479,39 +501,20 @@
 			};
 
 			state.items.push(newItem);
-			state.vocabPoints = (state.vocabPoints || 0) + 1;
 			await apiPutState(state);
 			renderAll();
-		}
-
-		// Process unmarked vocabulary
-		async function processUnmarkedVocab() {
-			const unprocessed = state.items.filter(it => !it.processed);
-			const cost = unprocessed.length;
-
-			if (state.vocabPoints < cost) {
-				alert(`Not enough vocab points! Need ${cost}, have ${state.vocabPoints}`);
-				return;
-			}
-
-			unprocessed.forEach(it => it.processed = true);
-			state.vocabPoints -= cost;
-			await apiPutState(state);
-			renderAll();
+			initPool();
 		}
 
 		// Delete vocabulary
 		async function deleteVocab(id) {
 			if (!confirm('Are you sure you want to delete this vocabulary?')) return;
 
-			const item = state.items.find(it => it.id === id);
-			if (item && !item.processed) {
-				state.vocabPoints = Math.max(0, state.vocabPoints - 1);
-			}
 			state.items = state.items.filter(it => it.id !== id);
 			await apiPutState(state);
 			renderAll();
 			checkQuizRedirect();
+			initPool();
 		}
 
 		// Edit vocabulary - open modal
@@ -523,6 +526,12 @@
 			document.getElementById('editWord').value = item.word;
 			document.getElementById('editDef').value = item.def;
 			document.getElementById('editModal').classList.add('show');
+		}
+
+		// Close edit modal
+		function closeEditModal() {
+			document.getElementById('editModal').classList.remove('show');
+			editingId = null;
 		}
 
 		// Save edited vocabulary
@@ -543,12 +552,7 @@
 			await apiPutState(state);
 			closeEditModal();
 			renderAll();
-		}
-
-		// Close edit modal
-		function closeEditModal() {
-			document.getElementById('editModal').classList.remove('show');
-			editingId = null;
+			initPool();
 		}
 
 		// Search filter function
@@ -563,10 +567,9 @@
 
 		// Render all tables
 		function renderAll() {
-			// Update stats
-			document.getElementById('vocabPoints').textContent = state.vocabPoints || 0;
-			document.getElementById('debt').textContent = state.debt || 0;
-			document.getElementById('lastDecay').textContent = 'Last: ' + (state.lastDecay || todayStr());
+			// Update pool message
+			const totalVocabs = state.items.length;
+			document.getElementById('poolMessage').textContent = `You have stored ${totalVocabs} vocab${totalVocabs !== 1 ? 's' : ''}! Keep going! 🎉`;
 
 			// Render all vocabulary table (with search filter)
 			const allTbody = document.querySelector('#allList tbody');
@@ -591,11 +594,12 @@
 			const todayTbody = document.querySelector('#todayList tbody');
 			todayTbody.innerHTML = '';
 			const today = todayStr();
-			const todayItems = state.items.filter(it => it.dateAdded === today || !it.processed);
+			const todayItems = state.items.filter(it => it.dateAdded === today);
 
 			todayItems.forEach(item => {
 				const tr = document.createElement('tr');
-				const status = item.processed ? '✅ Processed' : '⏳ Unprocessed';
+				const reviewCount = (item.reviews || []).length;
+				const status = reviewCount >= 4 ? '✅ Completed' : `📝 ${reviewCount}/4 Reviews`;
 				tr.innerHTML = `
 					<td>${escapeHtml(item.word)}</td>
 					<td>${escapeHtml(item.def)}</td>
@@ -607,11 +611,95 @@
 				`;
 				todayTbody.appendChild(tr);
 			});
+		}
 
-			// Update unprocessed count
-			const unprocessedCount = state.items.filter(it => !it.processed).length;
-			document.getElementById('unprocessedCount').textContent = unprocessedCount;
-			document.getElementById('processUnmarkedBtn').style.display = unprocessedCount > 0 ? 'inline-block' : 'none';
+		// Floating pool animation
+		let poolCards = [];
+		let animationFrame = null;
+
+		function initPool() {
+			const pool = document.getElementById('vocabPool');
+			pool.innerHTML = '';
+			poolCards = [];
+
+			if (animationFrame) cancelAnimationFrame(animationFrame);
+
+			const poolRect = pool.getBoundingClientRect();
+			const maxCards = Math.min(state.items.length, 30); // Limit to 30 cards for performance
+
+			state.items.slice(0, maxCards).forEach((item, index) => {
+				const card = document.createElement('div');
+				card.className = 'vocab-card';
+				card.textContent = item.word;
+				card.title = item.def; // Show definition on hover
+
+				const size = { width: 120, height: 36 };
+				const position = {
+					x: Math.random() * (poolRect.width - size.width),
+					y: Math.random() * (poolRect.height - size.height)
+				};
+				const velocity = {
+					x: (Math.random() - 0.5) * 2,
+					y: (Math.random() - 0.5) * 2
+				};
+
+				card.style.left = position.x + 'px';
+				card.style.top = position.y + 'px';
+				pool.appendChild(card);
+
+				poolCards.push({ card, position, velocity, size });
+			});
+
+			animatePool();
+		}
+
+		function animatePool() {
+			const pool = document.getElementById('vocabPool');
+			if (!pool) return;
+
+			const poolRect = pool.getBoundingClientRect();
+			const poolWidth = poolRect.width;
+			const poolHeight = poolRect.height;
+
+			poolCards.forEach((cardData) => {
+				const { card, position, velocity, size } = cardData;
+
+				// Update position
+				position.x += velocity.x;
+				position.y += velocity.y;
+
+				// Bounce off walls
+				if (position.x <= 0 || position.x + size.width >= poolWidth) {
+					velocity.x *= -1;
+					position.x = Math.max(0, Math.min(position.x, poolWidth - size.width));
+				}
+				if (position.y <= 0 || position.y + size.height >= poolHeight) {
+					velocity.y *= -1;
+					position.y = Math.max(0, Math.min(position.y, poolHeight - size.height));
+				}
+
+				// Apply friction (water resistance)
+				velocity.x *= 0.99;
+				velocity.y *= 0.99;
+
+				// Add slight random movement (water currents)
+				velocity.x += (Math.random() - 0.5) * 0.1;
+				velocity.y += (Math.random() - 0.5) * 0.1;
+
+				// Limit max speed
+				const maxSpeed = 3;
+				const speed = Math.sqrt(velocity.x ** 2 + velocity.y ** 2);
+				if (speed > maxSpeed) {
+					velocity.x = (velocity.x / speed) * maxSpeed;
+					velocity.y = (velocity.y / speed) * maxSpeed;
+				}
+
+				// Update card position
+				card.style.left = position.x + 'px';
+				card.style.top = position.y + 'px';
+			});
+
+			animationFrame = requestAnimationFrame(animatePool);
 		}
 
 		// Create floating elements
@@ -646,12 +734,6 @@
 			document.getElementById('inputDef').value = '';
 		});
 
-		document.getElementById('processUnmarkedBtn').addEventListener('click', async () => {
-			if (confirm('This will process all unmarked vocabulary and deduct vocab points. Continue?')) {
-				await processUnmarkedVocab();
-			}
-		});
-
 		document.getElementById('saveEditBtn').addEventListener('click', saveEdit);
 		document.getElementById('cancelEditBtn').addEventListener('click', closeEditModal);
 
@@ -680,21 +762,13 @@
 			try {
 				state = await apiGetState();
 
-				// Migrate old data
-				if (state.vocabPoints === undefined && state.counter !== undefined) {
-					state.vocabPoints = state.counter;
-					delete state.counter;
-				}
+				// Ensure items array exists
+				if (!state.items) state.items = [];
 
-				// Ensure all items have processed field
-				state.items.forEach(item => {
-					if (item.processed === undefined) item.processed = true;
-				});
-
-				await applyDecay();
 				renderAll();
 				checkQuizRedirect();
 				createFloatingElements();
+				initPool();
 			} catch (error) {
 				console.error('Failed to initialize:', error);
 			}
