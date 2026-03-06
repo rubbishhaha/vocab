@@ -390,7 +390,8 @@
 						<th>Word</th>
 						<th>Definition</th>
 						<th>Date Added</th>
-						<th>Reviews</th>
+						<th>Scheduled Reviews</th>
+						<th>Completed</th>
 						<th>Actions</th>
 					</tr>
 				</thead>
@@ -461,20 +462,91 @@
 			});
 		}
 
-		// Get items that need quiz
-		function getDueItems() {
-			const dueDays = [1, 2, 5, 8];
-			const today = todayStr();
+		// Calculate load (number of scheduled reviews) for a specific date
+		function getDateLoad(date) {
 			return state.items.filter(item => {
-				const daysSinceAdded = daysBetween(item.dateAdded, today);
-				for (const dueDay of dueDays) {
-					const scheduledDate = addDays(item.dateAdded, dueDay);
-					if (!item.reviews.includes(scheduledDate) && daysSinceAdded >= dueDay) {
-						return true;
+				if (!item.scheduledDates) return false;
+				return item.scheduledDates.includes(date) && !item.reviews.includes(date);
+			}).length;
+		}
+
+		// Smart scheduling: distribute reviews to balance load (target ~20 per day)
+		function calculateOptimalSchedule(baseDate) {
+			const TARGET_DAILY_REVIEWS = 20;
+			const baseIntervals = [1, 2, 5, 8, 13, 21]; // Base intervals in days
+			const scheduledDates = [];
+
+			for (const interval of baseIntervals) {
+				let bestDate = addDays(baseDate, interval);
+				let minLoad = getDateLoad(bestDate);
+
+				// Check nearby dates (±2 days) to find less loaded day
+				for (let offset = -2; offset <= 2; offset++) {
+					if (offset === 0) continue;
+					const candidateDate = addDays(baseDate, interval + offset);
+					const load = getDateLoad(candidateDate);
+					
+					// Prefer dates with lower load, but stay close to original interval
+					if (load < minLoad) {
+						minLoad = load;
+						bestDate = candidateDate;
 					}
 				}
-				return false;
+
+				scheduledDates.push(bestDate);
+			}
+
+			return scheduledDates;
+		}
+
+		// Get items that need quiz (with smart padding)
+		function getDueItems() {
+			const TARGET_DAILY_REVIEWS = 20;
+			const MIN_REVIEWS = 15;
+			const MAX_REVIEWS = 30;
+			const today = todayStr();
+			
+			// Get items scheduled for today or overdue
+			let dueItems = state.items.filter(item => {
+				// Migrate old items without scheduledDates
+				if (!item.scheduledDates) {
+					item.scheduledDates = [1, 2, 5, 8, 13, 21].map(d => addDays(item.dateAdded, d));
+				}
+				
+				// Check if any scheduled date is due (today or past) and not yet reviewed
+				return item.scheduledDates.some(date => 
+					date <= today && !item.reviews.includes(date)
+				);
 			});
+
+			// If we have too few reviews, add some "revision" items (old vocabs for reinforcement)
+			if (dueItems.length < MIN_REVIEWS) {
+				const completedItems = state.items.filter(item => {
+					if (!item.scheduledDates) return false;
+					// Items that completed all 4 reviews
+					const completedCount = item.scheduledDates.filter(d => 
+						item.reviews.includes(d)
+					).length;
+					return completedCount >= 6 && !dueItems.includes(item);
+				});
+
+				// Randomly select old vocabs to fill up to target
+				const shuffled = completedItems.sort(() => Math.random() - 0.5);
+				const needed = Math.max(0, TARGET_DAILY_REVIEWS - dueItems.length);
+				const fillers = shuffled.slice(0, needed);
+				
+				// Mark these as bonus reviews temporarily (use a wrapper object)
+				const bonusItems = fillers.map(item => ({...item, bonusReview: true}));
+				
+				dueItems = [...dueItems, ...bonusItems];
+			}
+
+			// Cap at max to avoid overwhelming
+			if (dueItems.length > MAX_REVIEWS) {
+				dueItems = dueItems.slice(0, MAX_REVIEWS);
+			}
+
+			return dueItems;
 		}
 
 		// Check if should redirect to quiz
@@ -491,13 +563,14 @@
 				return;
 			}
 
+			const today = todayStr();
 			const newItem = {
 				id: Date.now(),
 				word: word.trim(),
 				def: def.trim(),
-				dateAdded: todayStr(),
+				dateAdded: today,
 				reviews: [],
-				processed: false
+				scheduledDates: calculateOptimalSchedule(today)
 			};
 
 			state.items.push(newItem);
@@ -576,12 +649,25 @@
 			allTbody.innerHTML = '';
 			const filteredItems = filterItems(state.items.slice().reverse());
 			filteredItems.forEach(item => {
+				// Migrate old items
+				if (!item.scheduledDates) {
+					item.scheduledDates = [1, 2, 5, 8, 13, 21].map(d => addDays(item.dateAdded, d));
+				}			// Migrate old items with only 4 scheduled dates to 6 dates
+			if (item.scheduledDates && item.scheduledDates.length === 4) {
+				const day13 = addDays(item.dateAdded, 13);
+				const day21 = addDays(item.dateAdded, 21);
+				item.scheduledDates.push(day13, day21);
+			}				const scheduledStr = item.scheduledDates.join(', ');
+				const completedCount = item.scheduledDates.filter(d => (item.reviews || []).includes(d)).length;
+				const progress = `${completedCount}/${item.scheduledDates.length}`;
+				
 				const tr = document.createElement('tr');
 				tr.innerHTML = `
 					<td>${escapeHtml(item.word)}</td>
 					<td>${escapeHtml(item.def)}</td>
 					<td>${item.dateAdded}</td>
-					<td>${(item.reviews || []).join(', ') || '-'}</td>
+					<td style="font-size: 0.85em;">${scheduledStr}</td>
+					<td>${progress}</td>
 					<td>
 						<button class="btn-edit" onclick="editVocab(${item.id})">✏️ Edit</button>
 						<button class="btn-danger" onclick="deleteVocab(${item.id})">🗑️ Delete</button>
@@ -599,7 +685,7 @@
 			todayItems.forEach(item => {
 				const tr = document.createElement('tr');
 				const reviewCount = (item.reviews || []).length;
-				const status = reviewCount >= 4 ? '✅ Completed' : `📝 ${reviewCount}/4 Reviews`;
+				const status = reviewCount >= 6 ? '✅ Completed' : `📝 ${reviewCount}/6 Reviews`;
 				tr.innerHTML = `
 					<td>${escapeHtml(item.word)}</td>
 					<td>${escapeHtml(item.def)}</td>
@@ -774,7 +860,7 @@
 			}
 		})();
 
-		// Make functions globally accessible
+		// Make functions globally accessibl
 		window.editVocab = editVocab;
 		window.deleteVocab = deleteVocab;
 	</script>

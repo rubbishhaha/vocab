@@ -355,23 +355,52 @@
 		}
 
 		function getDueItems(items) {
-			const dueDays = [1, 2, 5, 8];
-			const now = todayStr();
-			return items.filter(item => {
-				const daysSinceAdded = daysBetween(item.dateAdded, now);
-				
-				// Check each quiz day
-				for (const dueDay of dueDays) {
-					const scheduledDate = addDays(item.dateAdded, dueDay);
-					
-					// If we haven't reviewed this scheduled date yet and it's time
-					if (!item.reviews.includes(scheduledDate) && daysSinceAdded >= dueDay) {
-						return true;
-					}
+			const TARGET_DAILY_REVIEWS = 20;
+			const MIN_REVIEWS = 15;
+			const MAX_REVIEWS = 30;
+			const today = todayStr();
+			
+			// Get items scheduled for today or overdue
+			let dueItems = items.filter(item => {
+				// Migrate old items without scheduledDates
+				if (!item.scheduledDates) {
+					item.scheduledDates = [1, 2, 5, 8].map(d => addDays(item.dateAdded, d));
 				}
 				
-				return false;
+				// Check if any scheduled date is due (today or past) and not yet reviewed
+				return item.scheduledDates.some(date => 
+					date <= today && !item.reviews.includes(date)
+				);
 			});
+
+			// If we have too few reviews, add some "revision" items (old vocabs for reinforcement)
+			if (dueItems.length < MIN_REVIEWS) {
+				const completedItems = items.filter(item => {
+					if (!item.scheduledDates) return false;
+					// Items that completed all 6 reviews
+					const completedCount = item.scheduledDates.filter(d => 
+						item.reviews.includes(d)
+					).length;
+					return completedCount >= 6 && !dueItems.includes(item);
+				});
+				
+				// Randomly select old vocabs to fill up to target
+				const shuffled = completedItems.sort(() => Math.random() - 0.5);
+				const needed = Math.max(0, TARGET_DAILY_REVIEWS - dueItems.length);
+				const fillers = shuffled.slice(0, needed);
+				
+				// Mark these as bonus reviews temporarily (use a wrapper object)
+				const bonusItems = fillers.map(item => ({...item, bonusReview: true}));
+				
+				dueItems = [...dueItems, ...bonusItems];
+			}
+
+			// Cap at max to avoid overwhelming
+			if (dueItems.length > MAX_REVIEWS) {
+				dueItems = dueItems.slice(0, MAX_REVIEWS);
+			}
+
+			return dueItems;
 		}
 
 		// Main Quiz Manager
@@ -435,26 +464,28 @@
 
 				const item = this.quizItems[this.currentIndex];
 				const today = todayStr();
-				const daysSinceAdded = daysBetween(item.dateAdded, today);
-				const dueDays = [1, 2, 5, 8];
 				
-				// Find which quiz day this is
-				let currentQuizDay = null;
-				let isCompensating = false;
-				for (const dueDay of dueDays) {
-					const scheduledDate = addDays(item.dateAdded, dueDay);
-					if (daysSinceAdded >= dueDay && !item.reviews.includes(scheduledDate)) {
-						currentQuizDay = dueDay;
-						isCompensating = daysSinceAdded > dueDay;
-						break;
-					}
+				// Migrate old items
+				if (!item.scheduledDates) {
+					item.scheduledDates = [1, 2, 5, 8].map(d => addDays(item.dateAdded, d));
 				}
 				
-				// Show compensation notice if applicable
+				// Check if this is a compensation quiz or bonus review
 				let questionHTML = item.def;
-				if (isCompensating && currentQuizDay !== null) {
-					const daysLate = daysSinceAdded - currentQuizDay;
-					questionHTML = `<div style="background: rgba(255, 165, 0, 0.2); padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 0.85em; border: 1px solid rgba(255, 165, 0, 0.5);">⚠️ Compensation Quiz (${daysLate} day${daysLate > 1 ? 's' : ''} late)</div>${item.def}`;
+				
+				if (item.bonusReview) {
+					// This is a bonus review for reinforcement
+					questionHTML = `<div style="background: rgba(99, 102, 241, 0.2); padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 0.85em; border: 1px solid rgba(99, 102, 241, 0.5);">🌟 Bonus Review (Reinforcement)</div>${item.def}`;
+				} else {
+					// Find the scheduled date we're reviewing for
+					const scheduledDate = item.scheduledDates.find(date => 
+						date === today || (date < today && !item.reviews.includes(date))
+					);
+					
+					if (scheduledDate && scheduledDate < today) {
+						const daysLate = daysBetween(scheduledDate, today);
+						questionHTML = `<div style="background: rgba(255, 165, 0, 0.2); padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 0.85em; border: 1px solid rgba(255, 165, 0, 0.5);">⚠️ Compensation Quiz (${daysLate} day${daysLate > 1 ? 's' : ''} late)</div>${item.def}`;
+					}
 				}
 				
 				document.getElementById('questionText').innerHTML = questionHTML;
@@ -501,31 +532,24 @@
 			async handleCorrectAnswer() {
 				const item = this.quizItems[this.currentIndex];
 				const today = todayStr();
-				const daysSinceAdded = daysBetween(item.dateAdded, today);
-				const dueDays = [1, 2, 5, 8];
 
-				// Find which quiz day this is
-				let currentQuizDay = null;
-				let isCompensating = false;
+				// If this is a bonus review (old vocab reinforcement), don't record it
+				if (item.bonusReview) {
+					console.log(`📚 Bonus review completed for "${item.word}"`);
+				} else {
+					// Find which scheduled date we're reviewing for
+					const scheduledDate = item.scheduledDates.find(date => 
+						date === today || (date < today && !item.reviews.includes(date))
+					);
 
-				for (const dueDay of dueDays) {
-					const scheduledDate = addDays(item.dateAdded, dueDay);
-					if (daysSinceAdded >= dueDay && !item.reviews.includes(scheduledDate)) {
-						currentQuizDay = dueDay;
-						isCompensating = daysSinceAdded > dueDay;
-						break;
-					}
-				}
-
-				if (currentQuizDay !== null) {
-					// Mark the SCHEDULED date as reviewed (NOT today)
-					const scheduledDate = addDays(item.dateAdded, currentQuizDay);
-					if (!item.reviews.includes(scheduledDate)) {
+					if (scheduledDate && !item.reviews.includes(scheduledDate)) {
 						item.reviews.push(scheduledDate);
-					}
-
-					if (isCompensating) {
-						console.log(`📝 Compensated quiz for "${item.word}": was due ${scheduledDate}, completed ${today}`);
+						
+						// Check if this is a late review (compensation)
+						if (scheduledDate < today) {
+							const daysLate = daysBetween(scheduledDate, today);
+							console.log(`📝 Compensated quiz for "${item.word}": was due ${scheduledDate}, completed ${today} (${daysLate} days late)`);
+						}
 					}
 				}
 
